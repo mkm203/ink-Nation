@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ink Nation Tattoo Studio</title>
+<meta name="description" content="Ink Nation tattoo studio. Meet the artists, see recent work, see prices, book your session and pay your deposit online.">
+<meta name="theme-color" content="#0d0d0d">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230d0d0d'/%3E%3Ctext x='32' y='44' font-family='Arial' font-weight='900' font-size='34' text-anchor='middle' fill='%23e1e1e1'%3EIN%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Instrument+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/shop.css">
+<link rel="stylesheet" href="/css/team.css">
+</head>
+<body>
+<a class="skip" href="#about">Skip to content</a>
+
+<div id="pre" aria-hidden="true">
+  <b>INK</b>
+  <div class="pre-count"><span id="preNum">0%</span><i id="preBar"></i></div>
+</div>
+
+<header class="top">
+  <a class="logo" href="#top" aria-label="Ink Nation, back to top"><i>[</i><b>INK<br>NATION</b><i>]</i></a>
+  <nav class="nav" aria-label="Main">
+    <a href="#about">About us</a><a href="#work">Work</a><a href="#team">Team</a><a href="#reviews">Reviews</a><a href="/discover.html">Discover</a><a href="#faq">FAQ</a><a href="#book">Book</a>
+  </nav>
+  <button class="burger" id="burger" aria-label="Open menu" aria-expanded="false" aria-controls="menu"><span></span><span></span><span></span></button>
+</header>
+
+<div id="menu" aria-label="Menu" role="dialog" aria-modal="true">
+  <button class="close" id="menuClose" type="button">Close</button>
+  <ul>
+    <li><a href="#about">About us</a></li>
+    <li><a href="#work">Work</a></li>
+    <li><a href="#team">Team</a></li>
+    <li><a href="#reviews">Reviews</a></li>
+    <li><a href="/discover.html">Discover</a></li>
+    <li><a href="#faq">FAQ</a></li>
+    <li><a href="#book">Book a session</a></li>
+  </ul>
+  <p data-bind="hours-inline"></p>
+</div>
+
+<main id="top">
+  <section class="hero">
+    <h1 class="mega" aria-label="Ink Nation"><span>INK</span><span>NATION</span></h1>
+    <svg class="hero-art" id="heroArt" aria-hidden="true"></svg>
+    <a class="btn btn-light hero-cta" href="#book">Book now</a>
+  </section>
+
+  <section class="about" id="about">
+    <svg class="orn" id="ornAbout" data-spin=".04" aria-hidden="true"></svg>
+    <div class="in about-grid">
+      <p class="tag">Hello</p>
+      <div>
+        <h2 class="js-reveal">We turn ideas into ink with style and meaning.</h2>
+        <p>Tattooing is more than ink on skin. It is identity, memory, rebellion and healing. At Ink Nation everyone walks in with a different reason, and we treat each one with respect. Our artists are technically sharp, and they listen. Bring a sketch, a blurry screenshot or only a feeling, and we will shape it into something real.</p>
+        <p>The studio is not a production line. We keep things clean, calm and unhurried, so you are never pushed into a decision. Every line has a purpose, and we are here to make work that lasts.</p>
+        <a class="btn btn-line" href="#book">Get in touch</a> <a class="btn btn-line" href="/discover.html">See prices and deposits</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="work" id="work" aria-label="Recent work"></section>
+
+  <section class="reviews in" id="reviews" aria-labelledby="reviewsH" hidden>
+    <div class="reviews-head">
+      <p class="tag">Reviews</p>
+      <h2 id="reviewsH">What our clients say.</h2>
+    </div>
+    <ul class="review-list" id="reviewsList"></ul>
+  </section>
+
+  <section class="team" id="team" aria-label="Our team">
+    <div class="team-stick">
+      <p class="tag">Our team</p>
+      <div class="team-track" id="teamList" tabindex="0" aria-label="Artists. Scroll sideways."></div>
+      <div class="team-ctl"><button type="button" id="teamPrev" aria-label="Previous artist">←</button><span id="teamCount" aria-live="polite"></span><button type="button" id="teamNext" aria-label="Next artist">→</button></div>
+    </div>
+  </section>
+
+  <section class="vsec" id="studioVideo" aria-label="Studio video">
+    <div class="vstage"><div class="vbox" id="vbox"><video id="studioVid" src="/media/studio-loop.mp4" poster="/media/studio-loop.jpg" muted loop playsinline autoplay preload="metadata" aria-label="Tattooing in the studio"></video></div></div>
+  </section>
+
+  <section class="ink" aria-label="Take your time">
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="goo"><feGaussianBlur in="SourceGraphic" stdDeviation="16" result="b"/><feColorMatrix in="b" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -10"/></filter></svg>
+    <div class="pool" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="in"><p>Take your time. It is permanent.</p></div>
+  </section>
+
+  <section class="faq in" id="faq">
+    <div class="faq-grid">
+      <h2>Questions, answered.</h2>
+      <div>
+        <div id="faqList"></div>
+        <div class="ask">
+          <h3>Did not find your answer?</h3>
+          <p class="s">Ask us. A real person in the studio reads every question.</p>
+          <form id="askForm" novalidate>
+            <label class="fld" data-f="name"><span>Name</span><input id="q-name" name="name" autocomplete="name" maxlength="100"></label>
+            <label class="fld" data-f="email"><span>Email</span><input id="q-email" name="email" type="email" autocomplete="email" maxlength="160"></label>
+            <label class="fld" data-f="question"><span>Your question</span><textarea id="q-text" name="question" rows="3" maxlength="2000"></textarea></label>
+            <button class="btn btn-light" type="submit">Send question</button>
+            <p class="msg" id="askMsg" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="paper">
+    <svg class="orn" id="ornBook" data-spin="-.03" aria-hidden="true"></svg>
+    <section class="book in" id="book">
+      <div class="book-grid">
+        <div>
+          <h2>Pick your artist.<br>Share your vision.</h2>
+          <p class="lede">You have explored the vibe, met the crew, and maybe even imagined the design. Now it is time to turn that into something permanent. Whether it is a bold new piece or the start of your first tattoo journey, we are ready when you are. Tell us what is on your mind and we will figure it out together. You do not need all the answers, only the desire to create something meaningful.</p>
+          <form id="bookForm" novalidate>
+            <label class="fld" data-f="name"><span>Name</span><input id="f-name" name="name" autocomplete="name" maxlength="100" required></label>
+            <label class="fld" data-f="artist_id"><span>Artist</span><select id="f-artist" name="artist_id"><option value="">Not sure yet</option></select></label>
+            <div class="row2">
+              <label class="fld" data-f="tier_id"><span>Size</span><select id="f-tier" name="tier_id"><option value="">Not sure yet</option></select></label>
+              <label class="fld" data-f="date"><span>Preferred date (Mon to Fri)</span><input id="f-date" name="date" type="date" required></label>
+            </div>
+            <p class="tier-hint" id="tierHint">Choosing a size shows the deposit that secures your booking. See <a href="/discover.html#pricing">all prices</a>.</p>
+            <label class="fld" data-f="phone"><span>Phone</span><input id="f-phone" name="phone" type="tel" autocomplete="tel" maxlength="30" required></label>
+            <label class="fld" data-f="email"><span>Email</span><input id="f-email" name="email" type="email" autocomplete="email" maxlength="160" required></label>
+            <label class="fld" data-f="idea"><span>Your idea (optional)</span><textarea id="f-idea" name="idea" rows="3" maxlength="2000"></textarea></label>
+            <label class="fld" data-f="reference_image"><span>Reference image (optional, JPG, PNG, WebP or GIF, up to 5 MB)</span><input id="f-ref" name="reference_image" type="file" accept="image/jpeg,image/png,image/webp,image/gif"></label>
+            <div class="sw">
+              <label><input type="checkbox" id="f-bw" name="bw"><i></i>Black and white tattoo</label>
+              <label><input type="checkbox" id="f-col" name="colour"><i></i>Tattoo with colours</label>
+            </div>
+            <button class="btn btn-dark" type="submit" id="bookBtn">Book</button>
+            <p id="formMsg" role="status" aria-live="polite"></p>
+          </form>
+          <div id="bookDone" hidden></div>
+
+          <details class="track" id="track">
+            <summary>Already sent a request? Check its status</summary>
+            <form id="trackForm" novalidate>
+              <label class="fld"><span>Reference code</span><input id="t-ref" placeholder="INK-XXXXXX" autocomplete="off" maxlength="12"></label>
+              <label class="fld"><span>Email used for the request</span><input id="t-email" type="email" autocomplete="email"></label>
+              <button class="btn btn-dark" type="submit">Check status</button>
+            </form>
+            <div class="result" id="trackResult" role="status" aria-live="polite"></div>
+          </details>
+        </div>
+        <div class="session">Session</div>
+      </div>
+      <div class="meta">
+        <div><span data-bind="email"></span><br><span data-bind="phone"></span></div>
+        <div data-bind="hours"></div>
+        <div>Studio<br><span data-bind="address"></span></div>
+      </div>
+    </section>
+
+    <footer class="foot in">
+      <div class="mark" id="mark" aria-label="Ink Nation"><span class="k">INK</span><span class="studio" aria-hidden="true"><span class="ltr" style="--i:0"><span class="reel"><s>N</s><s>N</s><s>N</s></span></span><span class="ltr" style="--i:1"><span class="reel"><s>A</s><s>A</s><s>A</s></span></span><span class="ltr" style="--i:2"><span class="reel"><s>T</s><s>T</s><s>T</s></span></span><span class="ltr" style="--i:3"><span class="reel"><s>I</s><s>I</s><s>I</s></span></span><span class="ltr" style="--i:4"><span class="reel"><s>O</s><s>O</s><s>O</s></span></span><span class="ltr" style="--i:5"><span class="reel"><s>N</s><s>N</s><s>N</s></span></span></span></div>
+      <div class="info">
+        <div><b>Phone number</b><span data-bind="phone"></span></div>
+        <div><b>Email</b><span data-bind="email"></span></div>
+        <div class="q"><h4>Have a<br>question?</h4><p>We are here to clear up doubts, explain the process, or just talk ink. No question is too small. Check our FAQ.</p><a class="btn btn-dark" href="#faq">FAQ</a></div>
+        <div><b>Address</b><span data-bind="address"></span></div>
+        <div><b>Open</b><span data-bind="hours"></span></div>
+      </div>
+      <div class="legal"><span>© <span id="year"></span> <span data-bind="studio_name">Ink Nation Tattoo Studio</span>. All rights reserved.</span><a href="#top">Back to top</a></div>
+    </footer>
+  </div>
+</main>
+<noscript><p class="loaderr">This site needs JavaScript to load the artists, the work and the booking form.</p></noscript>
+<script src="/js/art.js"></script>
+<script src="/js/common.js"></script>
+<script src="/js/pay.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

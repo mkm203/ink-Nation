@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Discover · Ink Nation Tattoo Studio</title>
+<meta name="description" content="Tattoo sizes and prices, booking deposits, and online payment from Ink Nation.">
+<meta name="theme-color" content="#0d0d0d">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230d0d0d'/%3E%3Ctext x='32' y='44' font-family='Arial' font-weight='900' font-size='34' text-anchor='middle' fill='%23e1e1e1'%3EIN%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Instrument+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/css/site.css">
+<link rel="stylesheet" href="/css/shop.css">
+</head>
+<body data-title="Discover">
+<a class="skip" href="#pricing">Skip to content</a>
+
+<header class="top">
+  <a class="logo" href="/" aria-label="Ink Nation, home"><i>[</i><b>INK<br>NATION</b><i>]</i></a>
+  <nav class="nav" aria-label="Main">
+    <a href="/#about">About us</a><a href="/#work">Work</a><a href="/#team">Team</a><a href="/discover.html" aria-current="page">Discover</a><a href="/#faq">FAQ</a><a href="/#book">Book</a>
+  </nav>
+  <button class="burger" id="burger" aria-label="Open menu" aria-expanded="false" aria-controls="menu"><span></span><span></span><span></span></button>
+</header>
+
+<div id="menu" aria-label="Menu" role="dialog" aria-modal="true">
+  <button class="close" id="menuClose" type="button">Close</button>
+  <ul>
+    <li><a href="/#about">About us</a></li>
+    <li><a href="/#work">Work</a></li>
+    <li><a href="/#team">Team</a></li>
+    <li><a href="/discover.html">Discover</a></li>
+    <li><a href="/#faq">FAQ</a></li>
+    <li><a href="/#book">Book a session</a></li>
+  </ul>
+  <p data-bind="hours-inline"></p>
+</div>
+
+<main>
+  <section class="dhero in">
+    <p class="tag">Discover</p>
+    <h1>Sizes and<br>prices.</h1>
+    <p class="lede" id="intro"></p>
+    <div class="dhero-links"><a class="btn btn-light" href="#pricing">Tattoo prices</a><a class="btn btn-line" href="#lookup">Check a deposit</a></div>
+  </section>
+
+  <section class="pricing in" id="pricing" aria-labelledby="pricingH">
+    <div class="sec-head"><h2 id="pricingH">Tattoo prices</h2><p class="note" id="pricingNote"></p></div>
+    <ol class="tiers" id="tiers"><li class="loaderr">Loading prices…</li></ol>
+  </section>
+
+  <div class="paper">
+    <section class="ways in" id="lookup">
+      <div class="ways-grid">
+        <div>
+          <h2>Ways to pay</h2>
+          <p class="lede" id="waysLede">Loading…</p>
+          <ul class="waylist" id="ways"></ul>
+        </div>
+        <div>
+          <h2>Check a deposit</h2>
+          <p class="lede">Paid a booking deposit? Enter the code you were given and the email you used.</p>
+          <form id="lookForm" novalidate>
+            <label class="fld"><span>Order code</span><input id="l-ref" placeholder="ORD-XXXXXX" autocomplete="off" maxlength="12"></label>
+            <label class="fld"><span>Email used for the deposit</span><input id="l-email" type="email" autocomplete="email"></label>
+            <button class="btn btn-dark" type="submit">Check payment</button>
+            <p id="lookMsg" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <footer class="foot in">
+      <div class="mark" id="mark" aria-label="Ink Nation"><span class="k">INK</span><span class="studio" aria-hidden="true"><span class="ltr" style="--i:0"><span class="reel"><s>N</s><s>N</s><s>N</s></span></span><span class="ltr" style="--i:1"><span class="reel"><s>A</s><s>A</s><s>A</s></span></span><span class="ltr" style="--i:2"><span class="reel"><s>T</s><s>T</s><s>T</s></span></span><span class="ltr" style="--i:3"><span class="reel"><s>I</s><s>I</s><s>I</s></span></span><span class="ltr" style="--i:4"><span class="reel"><s>O</s><s>O</s><s>O</s></span></span><span class="ltr" style="--i:5"><span class="reel"><s>N</s><s>N</s><s>N</s></span></span></span></div>
+      <div class="info">
+        <div><b>Phone number</b><span data-bind="phone"></span></div>
+        <div><b>Email</b><span data-bind="email"></span></div>
+        <div class="q"><h4>Ready to<br>book?</h4><p>Pick your artist and a date. Choosing a size from the price list shows the deposit that secures it.</p><a class="btn btn-dark" href="/#book">Book a session</a></div>
+        <div><b>Address</b><span data-bind="address"></span></div>
+        <div><b>Open</b><span data-bind="hours"></span></div>
+      </div>
+      <div class="legal"><span>© <span id="year"></span> <span data-bind="studio_name">Ink Nation Tattoo Studio</span>. All rights reserved.</span><a href="#top">Back to top</a></div>
+    </footer>
+  </div>
+</main>
+
+<noscript><p class="loaderr">This page needs JavaScript to show prices and payment details.</p></noscript>
+<script src="/js/art.js"></script>
+<script src="/js/common.js"></script>
+<script src="/js/pay.js"></script>
+<script src="/js/discover.js"></script>
+</body>
+</html>

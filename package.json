@@ -1,0 +1,29 @@
+{
+  "name": "ink-nation-app",
+  "version": "2.0.0",
+  "description": "Ink Nation tattoo studio: website, booking, shop and admin",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "db:init": "node scripts/init-db.js",
+    "test": "node scripts/api-test.js"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.3",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.5.0",
+    "mysql2": "^3.24.6",
+    "nodemailer": "^6.9.16",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}

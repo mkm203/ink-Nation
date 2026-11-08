@@ -1,0 +1,99 @@
+/* Discover page and payment window. Uses the colours and fonts from site.css. */
+
+/* page head */
+.dhero{padding-top:calc(clamp(110px,14vw,190px) + env(safe-area-inset-top,0px));padding-bottom:clamp(40px,6vw,90px)}
+.dhero h1{margin:14px 0 22px;font:900 clamp(48px,11vw,190px)/.96 var(--display);letter-spacing:-.055em;text-transform:uppercase;overflow-wrap:anywhere}
+.dhero .lede{max-width:52ch;margin:0 0 26px;font-size:13.5px;color:#bdbdbd}
+.dhero-links{display:flex;flex-wrap:wrap;gap:10px}
+.sec-head{display:flex;justify-content:space-between;align-items:end;gap:20px 40px;flex-wrap:wrap;margin-bottom:clamp(20px,3vw,40px)}
+.sec-head h2{margin:0;font:500 clamp(32px,4.2vw,60px)/1.05 var(--display);letter-spacing:-.035em}
+.sec-head .note{margin:0;max-width:46ch;font-size:12.5px;color:#a9a9a9}
+
+/* prices */
+.pricing{padding-block:clamp(48px,7vw,110px)}
+.tiers{list-style:none;margin:0;padding:0;border-top:1px solid var(--rule)}
+.tier{display:grid;grid-template-columns:56px minmax(0,1fr) auto auto;gap:12px clamp(16px,3vw,48px);align-items:center;padding:clamp(18px,2.4vw,30px) 0;border-bottom:1px solid var(--rule)}
+.tier.has-pic{grid-template-columns:56px 96px minmax(0,1fr) auto auto}
+.tier .n{font:400 12px var(--body);color:var(--mute);font-variant-numeric:tabular-nums}
+.tier-pic{aspect-ratio:1;border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:#111}
+.tier-pic img{display:block;width:100%;height:100%;object-fit:cover}
+.tier h3{margin:0;font:800 clamp(26px,3.6vw,52px)/1 var(--display);letter-spacing:-.045em}
+.tier .tn p{margin:6px 0 0;max-width:52ch;font-size:12.5px;color:#a9a9a9}
+.tp{text-align:right}
+.tp b{display:block;font:500 clamp(20px,2.2vw,30px)/1.1 var(--display);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.tp small{color:#a9a9a9;font-size:12px}
+@media(max-width:760px){
+  .tier{grid-template-columns:36px minmax(0,1fr)}
+  .tier.has-pic{grid-template-columns:36px 64px minmax(0,1fr)}
+  .tier .tp{grid-column:2;text-align:left}
+  .tier.has-pic .tp{grid-column:3}
+  .tier .btn{grid-column:2;justify-self:start}
+  .tier.has-pic .btn{grid-column:3}
+}
+
+/* ways to pay + lookup (light block) */
+.ways{padding-block:clamp(56px,8vw,120px) clamp(20px,3vw,40px)}
+.ways-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(28px,8vw,140px)}
+.ways h2{margin:0 0 16px;font:500 clamp(28px,3.4vw,48px)/1.05 var(--display);letter-spacing:-.035em}
+.ways .lede{margin:0 0 22px;font-size:12.5px;line-height:1.55;color:#3a3a3a;max-width:52ch}
+.waylist{list-style:none;margin:0;padding:0;max-width:520px;border-top:1px solid var(--ink)}
+.waylist li{display:grid;gap:2px;padding:12px 0;border-bottom:1px solid #bdbdbd;font-size:12px;line-height:1.5}
+.waylist b{font:700 16px var(--display);letter-spacing:-.02em}
+#lookMsg{margin:10px 0 0;font-size:12px;min-height:1.5em;color:#a8110a}
+@media(max-width:800px){.ways-grid{grid-template-columns:1fr}}
+
+/* payment window: light panel, same look as the booking form */
+.paydlg{width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;border:0;border-radius:6px;background:var(--paper);color:var(--ink);overflow:auto;overscroll-behavior:contain}
+.paydlg::backdrop{background:rgba(0,0,0,.72)}
+.pd-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 22px 12px;background:var(--paper);border-bottom:1px solid #c4c4c4}
+.pd-head h2{margin:0;font:800 clamp(22px,3vw,30px)/1 var(--display);letter-spacing:-.04em}
+.pd-x{width:40px;height:40px;border:1px solid var(--ink);border-radius:2px;background:none;color:var(--ink);font:300 24px/1 var(--body);cursor:pointer}
+.pd-body{padding:18px 22px 24px;display:grid;gap:14px;font-size:13px;line-height:1.55}
+.paydlg .btn-light{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.paydlg .btn-light:hover{background:transparent;color:var(--ink)}
+.paydlg .btn-line{border-color:rgba(13,13,13,.45)}
+.paydlg .btn-line:hover{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.paydlg form{max-width:none}
+.paydlg .btn{justify-self:start;margin:0}
+.pd-muted{margin:0;color:#4a4a4a;font-size:12.5px}
+.pd-ok{margin:0;padding:12px 14px;border-radius:4px;background:#cfe6d3;color:#0f3d1c;font-weight:500}
+.pd-msg{margin:0;min-height:1.2em;font-size:12.5px}
+.pd-msg.err{color:#a8110a}
+.pd-lines{list-style:none;margin:0;padding:0;border-top:1px solid #bdbdbd}
+.pd-lines li{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid #bdbdbd}
+.pd-total{display:flex;justify-content:space-between;margin:0;font:700 18px var(--display);letter-spacing:-.02em}
+.pd-form{display:grid;gap:10px}
+.pd-f{display:block;border:1px solid var(--ink);border-radius:4px;padding:8px 12px 7px}
+.pd-f:focus-within{box-shadow:0 0 0 2px var(--ink)}
+.pd-f>span{display:block;font-size:10.5px;line-height:1.25;color:#555}
+.pd-f input{display:block;width:100%;border:0;outline:0;background:none;color:var(--ink);font:400 14px/1.4 var(--body);padding:3px 0 0}
+.pd-f.bad{border-color:#b3140b;box-shadow:0 0 0 1px #b3140b}
+.pd-f em{display:block;margin-top:4px;font-style:normal;font-size:11px;color:#a8110a}
+.pd-methods{border:0;margin:6px 0 4px;padding:0;display:grid;gap:8px}
+.pd-methods legend{padding:0 0 8px;font:600 13px var(--body)}
+.pd-method{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--ink);border-radius:4px;cursor:pointer}
+.pd-method:has(input:checked){background:var(--ink);color:var(--paper)}
+.pd-method:has(input:focus-visible){outline:2px solid var(--red);outline-offset:2px}
+.pd-method input{margin-top:3px;accent-color:var(--red)}
+.pd-method b{display:block;font:700 15px var(--display)}
+.pd-method small{display:block;margin-top:2px;font-size:11.5px;opacity:.8}
+.pd-code{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pd-code code{font:600 18px/1 var(--display);letter-spacing:.04em;background:var(--ink);color:var(--paper);padding:9px 12px;border-radius:2px}
+.pd-code .btn{padding:9px 14px}
+.pd-steps{margin:0;display:grid;border-top:1px solid var(--ink)}
+.pd-steps>div{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;padding:10px 0;border-bottom:1px solid #bdbdbd}
+.pd-steps dt{font-size:11.5px;color:#555}
+.pd-steps dd{margin:0;display:flex;gap:10px;align-items:flex-start;justify-content:space-between;font-weight:600;overflow-wrap:anywhere}
+.pd-copy{flex:none;padding:5px 9px;border:1px solid var(--ink);border-radius:2px;background:none;color:var(--ink);font:500 11px var(--body);cursor:pointer}
+.pd-qr{display:grid;justify-items:center;gap:6px;text-align:center}
+.pd-qr img{width:200px;height:200px;border:1px solid #bdbdbd;border-radius:4px;background:#fff}
+.pd-qr small{color:#4a4a4a;font-size:11px}
+.pd-link{justify-self:start;border:0;background:none;color:#7a1a14;font:500 12px var(--body);text-decoration:underline;cursor:pointer;padding:6px 0}
+@media(max-width:480px){.pd-steps>div{grid-template-columns:1fr;gap:2px}}
+
+/* deposit box on the booking confirmation */
+.deposit{margin:12px 0;padding:14px;border:1px dashed var(--ink);border-radius:4px;display:grid;gap:8px}
+.deposit p{margin:0}
+.deposit .btn{justify-self:start}
+.tier-hint{margin:4px 0 0;font-size:10.5px;color:#555}
+.btn:disabled{opacity:.5;cursor:not-allowed}
