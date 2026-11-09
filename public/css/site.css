@@ -263,6 +263,9 @@ html.js .mark:not(.run) .k{transform:translateY(14%)}
 .review{margin:0;padding:clamp(22px,3vw,34px) 0 0;border-top:1px solid var(--rule)}
 .review .stars{margin:0 0 16px;color:var(--paper);font-size:18px;letter-spacing:.18em;line-height:1}
 .review blockquote{margin:0 0 18px;font:400 clamp(17px,1.6vw,22px)/1.4 var(--display);letter-spacing:-.02em;color:var(--paper)}
+.review-who{display:flex;align-items:center;gap:12px;min-width:0}
+.review-pic{flex:none;width:44px;height:44px;border-radius:50%;object-fit:cover;border:1px solid var(--rule);background:#1a1a1a}
+.review-initial{display:grid;place-items:center;font:600 16px var(--display);color:var(--paper);text-transform:uppercase}
 .review cite{font-style:normal;font-size:12px;color:#a9a9a9;letter-spacing:.04em;text-transform:uppercase}
 @media(max-width:800px){
   .reviews-head{grid-template-columns:1fr}

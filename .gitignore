@@ -1,4 +1,11 @@
 node_modules
 .env
+.env.*
+!.env.example
+# The SQLite database and its write-ahead files.
+data/
+*.db
+*.db-wal
+*.db-shm
 uploads/*
 !uploads/.gitkeep

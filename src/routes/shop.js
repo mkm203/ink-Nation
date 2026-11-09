@@ -41,6 +41,7 @@ router.post('/orders', limiter(20, 60 * 60 * 1000), async (req, res) => {
   const order = await orders.createShopOrder({ name: v.name, email: v.email.toLowerCase(), phone: v.phone, note: v.note }, lines, v.method);
   const started = await checkout.startPayment(order);
   mail.later(() => emails.awaitingPayment(started));
+  mail.later(() => emails.adminPaymentReserved(started));
   res.status(201).json(await checkout.view(started));
 });
 
@@ -53,6 +54,7 @@ router.post('/bookings/:reference/deposit', limiter(20, 60 * 60 * 1000), async (
   const order = await orders.createDepositOrder(booking, v.method);
   const started = await checkout.startPayment(order);
   mail.later(() => emails.awaitingPayment(started));
+  mail.later(() => emails.adminPaymentReserved(started));
   res.status(201).json(await checkout.view(started));
 });
 

@@ -47,7 +47,7 @@
   }
 
   /* ---------- shell ---------- */
-  var TABS = [['bookings', 'Bookings'], ['orders', 'Orders & payments'], ['tiers', 'Pricing'], ['payments', 'Ways to pay'], ['artists', 'Artists'], ['works', 'Work'], ['reviews', 'Reviews'], ['faqs', 'FAQ'], ['inquiries', 'Questions'], ['studio', 'Studio']];
+  var TABS = [['bookings', 'Bookings'], ['orders', 'Orders & payments'], ['tiers', 'Pricing'], ['payments', 'Ways to pay'], ['artists', 'Artists'], ['artist_photos', 'Artist photos'], ['works', 'Recent work'], ['reviews', 'Reviews'], ['faqs', 'FAQ'], ['inquiries', 'Questions'], ['studio', 'Studio']];
   var main, tabsEl, current = 'bookings';
   function start() {
     app.textContent = '';
@@ -159,12 +159,19 @@
   var ART_KEYS = { artists: ['waves', 'rose', 'mandala'], works: ['irezumi', 'rose', 'mandala'] };
   var RES = {
     artists: { title: 'Artists', one: 'artist', image: { key: 'photo', label: 'Photo (shown instead of the drawn portrait)' }, label: function (r) { return r.name }, sub: function (r) { return r.specialty + (r.active ? '' : ' · hidden') },
+      note: 'Each artist has a personal gallery in the "Artist photos" tab. Add at least 3 photos per artist there. Personal work never appears in Recent work.',
       fields: [['name', 'Name', 'text'], ['slug', 'Web name (lower case, e.g. laura)', 'text'], ['specialty', 'Specialty', 'text'], ['experience_years', 'Years of experience', 'number'], ['bio', 'Bio', 'textarea'], ['art_key', 'Drawn portrait style (used when there is no photo)', 'select', 'art'], ['sort_order', 'Order on the page (smallest first)', 'number'], ['active', 'Show on the website', 'check']] },
-    works: { title: 'Work', one: 'work slide', image: { key: 'image', label: 'Photo (shown full width instead of the drawn art)' }, label: function (r) { return r.title }, sub: function (r) { return (r.artist_name || 'No artist') },
-      fields: [['title', 'Title', 'text'], ['artist_id', 'Artist', 'select', 'artist'], ['description', 'Description', 'textarea'], ['art_key', 'Drawn art style (used when there is no photo)', 'select', 'art'], ['sort_order', 'Order on the page (smallest first)', 'number']] },
+    artist_photos: { title: 'Artist photos', one: 'artist photo', image: { key: 'image', label: 'Photo of their work' }, artistLabel: true,
+      label: function (r) { return (r.artist_name || 'Artist ' + r.artist_id) + (r.title ? ' · ' + r.title : '') },
+      sub: function (r) { return 'Shown in the Our team section only'; },
+      note: 'Add at least 3 photos for each artist. These photos appear in the Our team section only, never in Recent work.',
+      fields: [['artist_id', 'Artist', 'select', 'artist'], ['title', 'Caption (optional)', 'text'], ['sort_order', 'Order in the gallery (smallest first)', 'number']] },
+    works: { title: 'Recent work', one: 'work slide', image: { key: 'image', label: 'Photo (shown full width instead of the drawn art)' }, label: function (r) { return r.title }, sub: function (r) { return r.description },
+      note: 'Recent work is for studio pieces. Each artist\'s personal work belongs in the "Artist photos" tab so their gallery does not flood this strip.',
+      fields: [['title', 'Title', 'text'], ['description', 'Description', 'textarea'], ['art_key', 'Drawn art style (used when there is no photo)', 'select', 'art'], ['sort_order', 'Order on the page (smallest first)', 'number']] },
     tiers: { title: 'Pricing: tattoo sizes and deposits', one: 'size', image: { key: 'image', label: 'Photo for this size (shown on the prices page)' }, label: function (r) { return r.name }, sub: function (r) { return usd(r.price_cents) + (r.price_max_cents ? ' – ' + usd(r.price_max_cents) : '') + ' · deposit ' + usd(r.deposit_cents) + (r.active ? '' : ' · hidden') },
       fields: [['name', 'Name (for example Small tattoo)', 'text'], ['description', 'Short description (optional)', 'textarea'], ['price_cents', 'Price in dollars (or the lowest price)', 'money'], ['price_max_cents', 'Highest price in dollars (leave empty for a single price)', 'money'], ['deposit_cents', 'Deposit in dollars', 'money'], ['sort_order', 'Order on the page (smallest first)', 'number'], ['active', 'Show on the website', 'check']] },
-    reviews: { title: 'Customer reviews', one: 'review', label: function (r) { return r.name + ' · ' + r.rating + (r.rating === 1 ? ' star' : ' stars') }, sub: function (r) { return r.review + (r.active ? '' : ' · hidden') },
+    reviews: { title: 'Customer reviews', one: 'review', image: { key: 'image', label: "Reviewer's photo (optional)" }, label: function (r) { return r.name + ' · ' + r.rating + (r.rating === 1 ? ' star' : ' stars') }, sub: function (r) { return r.review + (r.active ? '' : ' · hidden') },
       fields: [['name', 'Customer name', 'text'], ['rating', 'Rating', 'select', 'rating'], ['review', 'Review', 'textarea'], ['sort_order', 'Order on the page (smallest first)', 'number'], ['active', 'Show on the website', 'check']] },
     faqs: { title: 'FAQ', one: 'question', label: function (r) { return r.question }, sub: function (r) { return r.answer },
       fields: [['question', 'Question', 'text'], ['answer', 'Answer', 'textarea'], ['sort_order', 'Order (smallest first)', 'number']] }
@@ -174,13 +181,19 @@
     var cfg = RES[name], listBox = h('div', { class: 'rows' }), formBox = h('div');
     main.appendChild(h('h2', { class: 'sec', text: cfg.title }));
     main.appendChild(h('div', { class: 'actions', style: 'margin-bottom:14px' }, [h('button', { class: 'btn primary', type: 'button', text: 'Add ' + cfg.one, onclick: function () { openForm(null) } })]));
+    if (cfg.note) main.appendChild(h('p', { class: 'small', style: 'max-width:70ch;margin:-6px 0 16px', text: cfg.note }));
     main.appendChild(formBox); main.appendChild(listBox);
     var artists = [];
     function load() {
-      return Promise.all([api('/api/admin/' + name), name === 'works' ? api('/api/admin/artists') : Promise.resolve([])]).then(function (r) {
+      var needsArtists = name === 'works' || name === 'artist_photos';
+      return Promise.all([api('/api/admin/' + name), needsArtists ? api('/api/admin/artists') : Promise.resolve([])]).then(function (r) {
         artists = r[1]; listBox.textContent = '';
         if (!r[0].length) listBox.appendChild(h('p', { class: 'muted', text: 'Nothing here yet.' }));
         r[0].forEach(function (row) {
+          if (cfg.artistLabel) {
+            var owner = artists.filter(function (a) { return a.id === row.artist_id })[0];
+            row.artist_name = owner ? owner.name : '';
+          }
           var img = cfg.image && row[cfg.image.key] ? h('img', { src: row[cfg.image.key], alt: '' }) : h('div', { class: 'thumb' });
           listBox.appendChild(h('div', { class: 'row' }, [
             cfg.image ? img : null,
@@ -199,12 +212,16 @@
       cfg.fields.forEach(function (f) {
         var key = f[0], type = f[2], val = row ? row[key] : (key === 'active' ? 1 : (type === 'number' && f[4] !== 'blank' ? 0 : ''));
         if (type === 'money') val = row ? dollars(row[key]) : '';
+        if (key === 'artist_id' && !row && artists.length) val = artists[0].id;
         var inp;
         if (type === 'textarea') inp = h('textarea', { name: key }); else if (type === 'select') {
           inp = h('select', { name: key });
           if (f[3] === 'art') ART_KEYS[name].forEach(function (k) { inp.appendChild(h('option', { value: k, text: k })) });
           else if (f[3] === 'rating') [5, 4, 3, 2, 1].forEach(function (n) { inp.appendChild(h('option', { value: n, text: n + (n === 1 ? ' star' : ' stars') })) });
-          else { inp.appendChild(h('option', { value: '', text: 'No artist' })); artists.forEach(function (a) { inp.appendChild(h('option', { value: a.id, text: a.name })) }) }
+          else {
+            if (name !== 'artist_photos') inp.appendChild(h('option', { value: '', text: 'No artist' }));
+            artists.forEach(function (a) { inp.appendChild(h('option', { value: a.id, text: a.name })) });
+          }
         } else if (type === 'check') inp = h('input', { type: 'checkbox', name: key });
         else if (type === 'money') inp = h('input', { type: 'text', inputmode: 'decimal', name: key, placeholder: 'for example 250' });
         else inp = h('input', { type: type, name: key });

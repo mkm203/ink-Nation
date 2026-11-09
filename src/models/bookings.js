@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const db = require('../../config/db');
 const { HttpError } = require('../lib/errors');
+const { isDuplicate } = require('../lib/dbErrors');
 
 const ACTIVE = "('pending','confirmed')";
 const slots = () => Math.max(1, Number(process.env.SLOTS_PER_ARTIST_PER_DAY) || 2);
@@ -17,6 +18,7 @@ function newReference() {
 const SELECT = `SELECT b.*, a.name AS artist_name FROM bookings b LEFT JOIN artists a ON a.id = b.artist_id`;
 
 // Creates a booking inside a transaction so two people cannot take the last slot at once.
+// SQLite gives this transaction the whole database for the duration, so the count stays true.
 async function create(data) {
   const conn = await db.getConnection();
   try {
@@ -25,12 +27,12 @@ async function create(data) {
       const [[artist]] = await conn.query('SELECT id FROM artists WHERE id = ? AND active = 1', [data.artist_id]);
       if (!artist) throw new HttpError(422, 'Please check the highlighted fields.', { artist_id: 'That artist is not available.' });
       const [[{ n }]] = await conn.query(
-        `SELECT COUNT(*) AS n FROM bookings WHERE artist_id = ? AND preferred_date = ? AND status IN ${ACTIVE} FOR UPDATE`,
+        `SELECT COUNT(*) AS n FROM bookings WHERE artist_id = ? AND preferred_date = ? AND status IN ${ACTIVE}`,
         [data.artist_id, data.preferred_date]);
       if (n >= slots()) throw new HttpError(409, 'That artist is fully booked on this date. Please choose another day or another artist.', { date: 'Fully booked for this artist.' });
     }
     const [dup] = await conn.query(
-      `SELECT id FROM bookings WHERE email = ? AND preferred_date = ? AND artist_id <=> ? AND status IN ${ACTIVE} LIMIT 1`,
+      `SELECT id FROM bookings WHERE email = ? AND preferred_date = ? AND artist_id IS ? AND status IN ${ACTIVE} LIMIT 1`,
       [data.email, data.preferred_date, data.artist_id]);
     if (dup.length) throw new HttpError(409, 'You already have a request for this artist on this date. Use your reference code to check its status.');
 
@@ -44,7 +46,7 @@ async function create(data) {
           [reference, data.name, data.phone, data.email, data.artist_id, data.piece, data.colour_mode, data.preferred_date, data.idea, data.reference_image || null, data.tier_id || null, data.deposit_cents || 0]);
         break;
       } catch (e) {
-        if (e.code !== 'ER_DUP_ENTRY' || attempt === 5) throw e;
+        if (!isDuplicate(e) || attempt === 5) throw e;
       }
     }
     await conn.commit();
@@ -115,7 +117,7 @@ async function remove(id) {
 
 async function stats() {
   const [byStatus] = await db.query('SELECT status, COUNT(*) AS n FROM bookings GROUP BY status');
-  const [[{ upcoming }]] = await db.query("SELECT COUNT(*) AS upcoming FROM bookings WHERE preferred_date >= CURDATE() AND status IN ('pending','confirmed')");
+  const [[{ upcoming }]] = await db.query("SELECT COUNT(*) AS upcoming FROM bookings WHERE preferred_date >= date('now','localtime') AND status IN ('pending','confirmed')");
   const [[{ questions }]] = await db.query('SELECT COUNT(*) AS questions FROM inquiries WHERE handled = 0');
   const counts = { pending: 0, confirmed: 0, completed: 0, cancelled: 0 };
   byStatus.forEach(r => { counts[r.status] = r.n; });

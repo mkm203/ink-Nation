@@ -144,13 +144,11 @@
   var ART = { irezumi: Art.irezumi, rose: Art.rose, mandala: Art.colourMandala };
   var CLS = { irezumi: 's1', rose: 's2', mandala: 's3' };
   function renderWorks(list) {
-    var box = $('#work'), seen = {};
+    var box = $('#work');
     if (!list.length) { box.hidden = true; return }
     list.forEach(function (w) {
-      var id = w.artist_slug && !seen[w.artist_slug] ? 'work-' + w.artist_slug : null;
-      if (id) seen[w.artist_slug] = true;
-      var slide = h('article', { class: 'slide ' + (CLS[w.art_key] || 's1'), id: id });
-      if (w.image) { slide.appendChild(h('img', { class: 'photo', src: w.image, alt: w.title + (w.artist_name ? ', by ' + w.artist_name : ''), loading: 'lazy', decoding: 'async' })); slide.appendChild(h('div', { class: 'shade' })) }
+      var slide = h('article', { class: 'slide ' + (CLS[w.art_key] || 's1') });
+      if (w.image) { slide.appendChild(h('img', { class: 'photo', src: w.image, alt: w.title, loading: 'lazy', decoding: 'async' })); slide.appendChild(h('div', { class: 'shade' })) }
       else {
         var art = svg({ 'class': 'art', viewBox: '0 0 1200 800', preserveAspectRatio: 'xMaxYMid slice', 'aria-hidden': 'true' });
         (ART[w.art_key] || Art.irezumi)(art); slide.appendChild(art);
@@ -159,9 +157,8 @@
         h('p', { class: 'tag', text: 'Recent work' }),
         h('div', { class: 'copy' }, [
           h('h3', { text: w.title }),
-          w.artist_name ? h('p', { class: 'by', text: '[ Tattoo artist: ' + w.artist_name + ' ]' }) : null,
           h('p', { class: 'd', text: w.description }),
-          h('a', { class: 'btn btn-line', href: w.artist_slug ? '#artist-' + w.artist_slug : '#team', text: 'Meet the artist', onclick: function (e) { e.preventDefault(); if (w.artist_slug) goToArtist(w.artist_slug); else teamSec.scrollIntoView() } })
+          h('a', { class: 'btn btn-line', href: '#team', text: 'Meet the artists', onclick: function (e) { e.preventDefault(); teamSec.scrollIntoView() } })
         ])
       ]));
       box.appendChild(slide);
@@ -186,7 +183,9 @@
   function renderTeam() {
     var track = $('#teamList'); track.textContent = ''; panels = [];
     artistList.forEach(function (a) {
-      var mine = worksList.filter(function (w) { return w.artist_id === a.id });
+      var mine = (a.photos || []).map(function (p) {
+        return { image: p.image, title: p.title || 'Work by ' + a.name, description: '', art_key: a.art_key, artist_name: a.name };
+      });
       var pic = h('div', { class: 'tm-pic' });
       function drawnPortrait() { var s = svg({ viewBox: '0 0 300 400', preserveAspectRatio: 'xMidYMid slice', 'aria-hidden': 'true' }); Art.portrait(s, a.art_key, a.name.charAt(0).toUpperCase()); return s }
       if (a.photo) { var pi = h('img', { src: a.photo, alt: 'Portrait of ' + a.name, loading: 'lazy', decoding: 'async' }); pi.addEventListener('error', function () { if (pi.parentNode) pi.parentNode.replaceChild(drawnPortrait(), pi) }); pic.appendChild(pi) }
@@ -226,7 +225,9 @@
       wdlg.appendChild(h('div', { class: 'wk' }, [
         h('div', { class: 'wk-media ' + (CLS[w.art_key] || 's1') }, [workMedia(w), h('button', { class: 'wk-close', type: 'button', 'aria-label': 'Close', text: '×', onclick: function () { wdlg.close() } })]),
         h('div', { class: 'wk-text' }, [
-          h('p', { class: 'by', text: w.artist_name ? 'Tattoo artist: ' + w.artist_name : 'Recent work' }), h('h3', { text: w.title }), h('p', { class: 'd', text: w.description }),
+          h('p', { class: 'by', text: w.artist_name ? 'Tattoo artist: ' + w.artist_name : 'Recent work' }),
+          h('h3', { text: w.title }),
+          w.description ? h('p', { class: 'd', text: w.description }) : null,
           h('div', { class: 'wk-nav' }, list.length > 1 ? [prev, h('span', { class: 'tm-label', text: (idx + 1) + ' / ' + list.length }), next] : [])
         ])
       ]));
@@ -303,10 +304,13 @@
     if (!list.length) { box.hidden = true; return }
     list.forEach(function (r) {
       var n = Math.max(1, Math.min(5, Number(r.rating) || 5));
+      var avatar = r.image
+        ? h('img', { class: 'review-pic', src: r.image, alt: 'Photo of ' + r.name, loading: 'lazy', decoding: 'async' })
+        : h('span', { class: 'review-pic review-initial', 'aria-hidden': 'true', text: (r.name || '?').charAt(0).toUpperCase() });
       ul.appendChild(h('li', { class: 'review' }, [
         h('p', { class: 'stars', 'aria-label': n + ' out of 5 stars', text: '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n) }),
         h('blockquote', { text: r.review }),
-        h('cite', { text: r.name })
+        h('div', { class: 'review-who' }, [avatar, h('cite', { text: r.name })])
       ]));
     });
     box.hidden = false;

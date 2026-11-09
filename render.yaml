@@ -1,0 +1,53 @@
+# Render Blueprint for the Ink Nation app.
+# The whole Express app is hosted here (the API and the website), with a persistent
+# disk so the SQLite database and the uploaded photos survive deploys and restarts.
+#
+# 1. Push this folder to GitHub.
+# 2. On Render: New + > Blueprint, choose the repository, apply.
+# 3. Fill in the values marked "sync: false" in the dashboard.
+# See DEPLOY.md for the full walkthrough.
+services:
+  - type: web
+    name: ink-nation
+    runtime: node
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Everything durable lives on the mounted disk below.
+      - key: DB_FILE
+        value: /var/data/inkster.db
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: SLOTS_PER_ARTIST_PER_DAY
+        value: "2"
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+    disk:
+      name: ink-nation-data
+      mountPath: /var/data
+      sizeGB: 1

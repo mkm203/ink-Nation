@@ -53,6 +53,7 @@ router.post('/bookings', limiter(15, 60 * 60 * 1000), upload.single('reference_i
   try {
     const row = await bookings.create(clean);
     mail.later(() => emails.bookingReceived(row));
+    mail.later(() => emails.adminNewBooking(row));
     res.status(201).json(publicView(row));
   } catch (e) {
     removeImage(clean.reference_image);

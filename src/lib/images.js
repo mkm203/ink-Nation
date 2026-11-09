@@ -4,9 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
+require('dotenv').config({ quiet: true });
 const { HttpError } = require('./errors');
 
-const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads');
+// A host such as Render gives you a persistent disk and points UPLOAD_DIR at it.
+const UPLOAD_DIR = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : path.join(__dirname, '..', '..', 'uploads');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const MAX_BYTES = 5 * 1024 * 1024;
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_BYTES, files: 1, fields: 30 } });

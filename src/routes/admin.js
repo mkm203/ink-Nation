@@ -7,6 +7,7 @@ const orders = require('../models/orders');
 const pay = require('../lib/payments');
 const { login, logout, requireAdmin } = require('../middleware/auth');
 const { HttpError } = require('../lib/errors');
+const { isDuplicate, isForeignKey } = require('../lib/dbErrors');
 const { parse, parseOrThrow, intParam } = require('../lib/fields');
 const { upload, saveImage, removeImage } = require('../lib/images');
 const { uploadVideo, saveVideo } = require('../lib/video');
@@ -104,12 +105,12 @@ router.delete('/studio/hero', async (req, res) => {
 
 // ---- artists, works, FAQ: the same five operations each, so one small factory builds them
 function dbError(e) {
-  if (e.code === 'ER_DUP_ENTRY') return new HttpError(409, 'That value is already used.', { slug: 'Already used by another artist.' });
-  if (e.code === 'ER_NO_REFERENCED_ROW_2') return new HttpError(422, 'Please check the highlighted fields.', { artist_id: 'That artist does not exist.' });
+  if (isDuplicate(e)) return new HttpError(409, 'That value is already used.', { slug: 'Already used by another artist.' });
+  if (isForeignKey(e)) return new HttpError(422, 'Please check the highlighted fields.', { artist_id: 'That artist does not exist.' });
   return e;
 }
 
-function resource({ name, table, spec, image, order, check }) {
+function resource({ name, table, spec, image, order, check, requireImage, extraImages }) {
   const cols = Object.keys(spec).concat(image ? [image] : []);
 
   router.get(`/${name}`, async (req, res) => res.json((await db.query(`SELECT * FROM ${table} ORDER BY ${order}`))[0]));
@@ -117,7 +118,10 @@ function resource({ name, table, spec, image, order, check }) {
   router.post(`/${name}`, upload.single('image'), async (req, res) => {
     const values = parseOrThrow(spec, req.body);
     if (check) check(values);
-    if (image) values[image] = await saveImage(req.file);
+    if (image) {
+      values[image] = await saveImage(req.file);
+      if (requireImage && !values[image]) throw new HttpError(400, 'Choose a picture first.', { image: 'Choose a picture.' });
+    }
     try {
       const [r] = await db.query(`INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, cols.map(c => values[c] === undefined ? null : values[c]));
       res.status(201).json((await db.query(`SELECT * FROM ${table} WHERE id = ?`, [r.insertId]))[0][0]);
@@ -135,6 +139,7 @@ function resource({ name, table, spec, image, order, check }) {
       newImage = await saveImage(req.file);
       if (newImage) values[image] = newImage;
       else values[image] = req.body.remove_image === '1' ? null : existing[image];
+      if (requireImage && !values[image]) throw new HttpError(400, 'Choose a picture first.', { image: 'Choose a picture.' });
     }
     try {
       await db.query(`UPDATE ${table} SET ${cols.map(c => `${c} = ?`).join(', ')} WHERE id = ?`, [...cols.map(c => values[c] === undefined ? null : values[c]), id]);
@@ -147,14 +152,18 @@ function resource({ name, table, spec, image, order, check }) {
     const id = intParam(req.params.id);
     const [[existing]] = await db.query(`SELECT * FROM ${table} WHERE id = ?`, [id]);
     if (!existing) throw new HttpError(404, 'Not found.');
+    // Galleries linked to this row are removed by the database; their files are removed here.
+    const extra = extraImages ? await extraImages(existing) : [];
     await db.query(`DELETE FROM ${table} WHERE id = ?`, [id]);
     if (image) await removeImage(existing[image]);
+    for (const url of extra) await removeImage(url);
     res.status(204).end();
   });
 }
 
 resource({
   name: 'artists', table: 'artists', image: 'photo', order: 'sort_order, id',
+  extraImages: async artist => (await db.query('SELECT image FROM artist_photos WHERE artist_id = ?', [artist.id]))[0].map(p => p.image),
   spec: {
     slug: { type: 'str', required: true, max: 60, pattern: /^[a-z0-9]+(-[a-z0-9]+)*$/, message: 'Lower-case letters, digits and single hyphens only.' },
     name: { type: 'str', required: true, max: 100 },
@@ -166,11 +175,19 @@ resource({
     active: { type: 'bool', default: 1 }
   }
 });
+// Personal galleries for the team section. These never show in Recent work.
+resource({
+  name: 'artist_photos', table: 'artist_photos', image: 'image', requireImage: true, order: 'artist_id, sort_order, id',
+  spec: {
+    artist_id: { type: 'int', required: true, min: 1 },
+    title: { type: 'str', max: 120, default: '' },
+    sort_order: { type: 'int', min: 0, max: 9999, default: 0 }
+  }
+});
 resource({
   name: 'works', table: 'works', image: 'image', order: 'sort_order, id',
   spec: {
     title: { type: 'str', required: true, max: 120 },
-    artist_id: { type: 'int', min: 1 },
     description: { type: 'str', required: true, max: 1000 },
     art_key: { type: 'enum', values: ['irezumi', 'rose', 'mandala'], default: 'irezumi' },
     sort_order: { type: 'int', min: 0, max: 9999, default: 0 }
@@ -185,7 +202,7 @@ resource({
   }
 });
 resource({
-  name: 'reviews', table: 'reviews', order: 'sort_order, id DESC',
+  name: 'reviews', table: 'reviews', image: 'image', order: 'sort_order, id DESC',
   spec: {
     name: { type: 'str', required: true, max: 100 },
     rating: { type: 'int', required: true, min: 1, max: 5, default: 5 },

@@ -21,7 +21,7 @@
 .tm-works{display:flex;flex-direction:column;min-height:0;gap:10px}
 .tm-label{margin:0;font-size:10.5px;letter-spacing:.06em;color:var(--mute);text-transform:uppercase}
 .tm-works.none{visibility:hidden}
-.tm-thumbs{display:grid;gap:10px;align-content:start;min-height:0;overflow-y:auto;padding-right:2px;scrollbar-width:thin;scrollbar-color:#444 transparent}
+.tm-thumbs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-content:start;min-height:0;overflow-y:auto;padding-right:2px;scrollbar-width:thin;scrollbar-color:#444 transparent}
 .tm-thumb{position:relative;display:block;width:100%;aspect-ratio:4/3;padding:0;border:1px solid var(--rule);border-radius:2px;overflow:hidden;background:#111;color:var(--paper);cursor:pointer;text-align:left}
 .tm-thumb img,.tm-thumb svg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .5s cubic-bezier(.16,1,.3,1)}
 .tm-thumb:hover img,.tm-thumb:hover svg{transform:scale(1.05)}
@@ -41,7 +41,7 @@
   .tm-panel{flex-basis:calc(100vw - var(--gut) - var(--gut-r) - 32px);grid-template-columns:1fr;height:auto;min-height:0;gap:18px}
   .tm-pic{aspect-ratio:4/5;max-height:62vh}
   .tm-bio{overflow:visible}
-  .tm-thumbs{grid-auto-flow:column;grid-auto-columns:min(70%,260px);overflow-x:auto;overflow-y:visible;padding-bottom:6px}
+  .tm-thumbs{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:min(70%,260px);overflow-x:auto;overflow-y:visible;padding-bottom:6px}
   .tm-works.none{display:none}
 }
 

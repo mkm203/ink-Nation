@@ -8,6 +8,8 @@ const db = require('./config/db');
 
 const app = express();
 app.disable('x-powered-by');
+// Render and other hosts put a proxy in front of the app; this keeps rate limits and IPs correct.
+app.set('trust proxy', 1);
 // Stripe's webhook needs the raw body to check the signature, so it is registered before the JSON parser.
 app.post('/api/webhooks/stripe', express.raw({ type: 'application/json', limit: '200kb' }), require('./src/routes/webhooks'));
 app.use(express.json({ limit: '100kb' }));
@@ -46,13 +48,15 @@ app.use((err, req, res, next) => {
 
 const PORT = Number(process.env.PORT) || 3000;
 if (require.main === module) {
-  db.query('SELECT 1')
+  // On a fresh host (Render) the schema and starter content are created on first boot.
+  const { init } = require('./scripts/init-db');
+  init()
     .then(() => {
       app.listen(PORT, () => console.log(`Ink Nation is running at http://localhost:${PORT}`));
       // Unpaid orders give their stock back after a day.
       const sweep = () => require('./src/models/orders').expireStale().catch(e => console.error('Order sweep failed:', e.message));
       sweep(); setInterval(sweep, 10 * 60 * 1000).unref();
     })
-    .catch(e => { console.error('Cannot reach the database:', e.message, '\nStart MySQL in XAMPP, check .env, then run: npm run db:init'); process.exit(1); });
+    .catch(e => { console.error('Database setup failed:', e.message, '\nCheck DB_FILE (and UPLOAD_DIR on a host) then try again.'); process.exit(1); });
 }
 module.exports = app;

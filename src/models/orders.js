@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const db = require('../../config/db');
 const { HttpError } = require('../lib/errors');
+const { isDuplicate } = require('../lib/dbErrors');
 
 const CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function newReference() {
@@ -24,7 +25,7 @@ async function insertOrder(conn, o, items) {
         [reference, o.kind, o.booking_id || null, o.name, o.email, o.phone || '', o.note || '', o.total_cents, o.method]);
       for (const it of items) await conn.query('INSERT INTO order_items (order_id, product_id, name, unit_cents, qty) VALUES (?,?,?,?,?)', [r.insertId, it.product_id || null, it.name, it.unit_cents, it.qty]);
       return r.insertId;
-    } catch (e) { if (e.code !== 'ER_DUP_ENTRY' || attempt === 5) throw e; }
+    } catch (e) { if (!isDuplicate(e) || attempt === 5) throw e; }
   }
 }
 
@@ -48,8 +49,8 @@ async function createShopOrder(customer, lines, method) {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    const ids = [...merged.keys()].sort((a, b) => a - b); // same lock order for everyone: no deadlocks
-    const [rows] = await conn.query(`SELECT id, name, price_cents, stock, active FROM products WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY id FOR UPDATE`, ids);
+    const ids = [...merged.keys()].sort((a, b) => a - b);
+    const [rows] = await conn.query(`SELECT id, name, price_cents, stock, active FROM products WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY id`, ids);
     const byId = new Map(rows.map(r => [r.id, r]));
     const items = []; let total = 0;
     for (const id of ids) {
@@ -62,7 +63,7 @@ async function createShopOrder(customer, lines, method) {
     }
     const id = await insertOrder(conn, { kind: 'shop', ...customer, total_cents: total, method }, items);
     await conn.commit();
-    return await getById(id);
+    return await getById(id, conn);
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
 }
 
@@ -72,7 +73,7 @@ async function createDepositOrder(booking, method) {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    const [[b]] = await conn.query('SELECT id, deposit_paid FROM bookings WHERE id = ? FOR UPDATE', [booking.id]);
+    const [[b]] = await conn.query('SELECT id, deposit_paid FROM bookings WHERE id = ?', [booking.id]);
     if (b.deposit_paid) throw new HttpError(409, 'The deposit for this booking is already paid. Thank you!');
     const [[paid]] = await conn.query("SELECT COUNT(*) n FROM orders WHERE booking_id = ? AND kind = 'deposit' AND status = 'payment_submitted'", [booking.id]);
     if (paid.n) throw new HttpError(409, 'You already told us you sent this deposit. The studio is checking it now.');
@@ -83,7 +84,7 @@ async function createDepositOrder(booking, method) {
       total_cents: booking.deposit_cents, method
     }, [{ name: `Deposit for ${booking.piece} (${booking.reference})`, unit_cents: booking.deposit_cents, qty: 1 }]);
     await conn.commit();
-    return await getById(id);
+    return await getById(id, conn);
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
 }
 
@@ -100,12 +101,13 @@ async function attachPayment(id, fields) {
 // The one place where "paid" happens, whoever noticed the payment (Stripe, or the studio by hand).
 // Safe to call twice.
 async function markPaid(id, conn = db) {
-  const [r] = await conn.query("UPDATE orders SET status = 'paid', paid_at = NOW() WHERE id = ? AND status IN ('awaiting_payment','payment_submitted')", [id]);
+  const [r] = await conn.query("UPDATE orders SET status = 'paid', paid_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('awaiting_payment','payment_submitted')", [id]);
   if (r.affectedRows) {
     await conn.query("UPDATE bookings SET deposit_paid = 1 WHERE id = (SELECT booking_id FROM orders WHERE id = ? AND kind = 'deposit')", [id]);
-    // Tell the customer, in the background (required here, not at the top, because emails.js also needs this file's database).
+    // Tell the customer and the studio, in the background (required here, not at the top, because emails.js also needs this file's database).
     const mail = require('../lib/mailer');
     mail.later(() => require('../lib/emails').paymentReceived(id));
+    mail.later(() => require('../lib/emails').adminPaymentReceived(id));
   }
   return r.affectedRows > 0;
 }
@@ -115,7 +117,7 @@ async function cancel(id, { allowFrom = STATUSES } = {}) {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    const [[o]] = await conn.query('SELECT id, status, kind, booking_id FROM orders WHERE id = ? FOR UPDATE', [id]);
+    const [[o]] = await conn.query('SELECT id, status, kind, booking_id FROM orders WHERE id = ?', [id]);
     if (!o) throw new HttpError(404, 'Order not found.');
     if (o.status === 'cancelled') { await conn.commit(); return false; }
     if (!allowFrom.includes(o.status)) throw new HttpError(409, 'This order can no longer be cancelled here. Please contact the studio.');
@@ -138,7 +140,7 @@ async function submitted(id, paymentNote) {
 
 // Orders nobody paid within a day give their stock back.
 async function expireStale() {
-  const [rows] = await db.query("SELECT id FROM orders WHERE status = 'awaiting_payment' AND created_at < (NOW() - INTERVAL 1 DAY) LIMIT 100");
+  const [rows] = await db.query("SELECT id FROM orders WHERE status = 'awaiting_payment' AND created_at < datetime('now','-1 day') LIMIT 100");
   for (const r of rows) await cancel(r.id, { allowFrom: ['awaiting_payment'] }).catch(() => {});
   return rows.length;
 }

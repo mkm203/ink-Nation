@@ -1,4 +1,5 @@
-// The three emails customers receive: booking received, payment reserved (waiting for payment), payment received.
+// Emails customers receive (booking received, payment reserved, payment received) and a copy
+// for the studio (ADMIN_EMAIL) so new bookings, reservations and payments are never missed.
 const mail = require('./mailer');
 const pay = require('./payments');
 const { usd } = require('./money');
@@ -32,6 +33,18 @@ const itemRows = o => o.items.map(i => [(i.qty > 1 ? i.qty + ' × ' : '') + i.na
 async function ctx() { const studio = await content.settings(); return { studio, url: pay.appUrl(), name: studio.studio_name || 'Ink Nation' }; }
 const deliver = (studio, to, subject, preheader, blocks) => mail.send({ to, subject, replyTo: studio.email || undefined, ...render(studio, preheader, blocks) });
 
+// Where the studio's own copy goes. ADMIN_EMAIL wins; otherwise the studio email from the admin area.
+const adminAddress = studio => (process.env.ADMIN_EMAIL || '').trim() || (studio.email || '').trim();
+const adminLink = url => `${url}/admin/`;
+
+async function orderWithItems(orderId) {
+  const [[o]] = await db.query('SELECT o.*, b.reference AS booking_reference FROM orders o LEFT JOIN bookings b ON b.id = o.booking_id WHERE o.id = ?', [orderId]);
+  if (!o) return null;
+  const [items] = await db.query('SELECT name, unit_cents, qty FROM order_items WHERE order_id = ? ORDER BY id', [orderId]);
+  o.items = items;
+  return o;
+}
+
 // 1. A booking request was made.
 async function bookingReceived(b) {
   const { studio, url, name } = await ctx();
@@ -47,6 +60,25 @@ async function bookingReceived(b) {
   }
   blocks.push({ p: 'You can also use your code and email on the same page to check or cancel your request.' });
   return deliver(studio, b.email, `Booking request received (${b.reference}) · ${name}`, `We received your booking request ${b.reference}.`, blocks);
+}
+
+// The studio's copy of a new booking request.
+async function adminNewBooking(b) {
+  const { studio, url, name } = await ctx();
+  const to = adminAddress(studio);
+  if (!to) return;
+  const blocks = [
+    { p: `A new booking request was sent through the website.` },
+    { code: b.reference },
+    { rows: [
+      ['Name', b.name], ['Phone', b.phone], ['Email', b.email], ['Size', b.piece],
+      ['Artist', b.artist_name || 'Not chosen yet'], ['Preferred date', b.preferred_date],
+      ['Colour', b.colour_mode || ''], ['Deposit', b.deposit_cents ? usd(b.deposit_cents) : 'None'],
+      ['Idea', b.idea || '']
+    ] },
+    { link: ['Open the admin area', adminLink(url)] }
+  ];
+  return deliver(studio, to, `New booking request: ${b.reference} · ${name}`, `${b.name} booked ${b.preferred_date}.`, blocks);
 }
 
 // 2. A payment was reserved and is waiting for the customer to pay (the stock or the deposit is held for 24 hours).
@@ -76,12 +108,29 @@ async function awaitingPayment(order) {
   return deliver(studio, order.email, `Payment reserved: ${order.reference} is waiting for your payment · ${name}`, `Your ${what} is reserved. Complete the payment to confirm it.`, blocks);
 }
 
+// The studio's copy of a new reservation / payment attempt.
+async function adminPaymentReserved(order) {
+  const { studio, url, name } = await ctx();
+  const to = adminAddress(studio);
+  if (!to) return;
+  const what = order.kind === 'deposit' ? 'booking deposit' : 'order';
+  const blocks = [
+    { p: `A new ${what} is reserved and waiting for payment.` },
+    { code: order.reference },
+    { rows: [
+      ['Customer', order.name], ['Email', order.email], ['Method', order.method],
+      ['Total', usd(order.total_cents)], ...itemRows(order),
+      ['Booking', order.booking_id ? (order.booking_reference || String(order.booking_id)) : '']
+    ].filter(r => r[1] !== '' && r[1] != null) },
+    { link: ['Open the admin area', adminLink(url)] }
+  ];
+  return deliver(studio, to, `Payment reserved: ${order.reference} · ${name}`, `${order.name} started a ${order.method} payment.`, blocks);
+}
+
 // 3. The payment was confirmed (by Stripe, or by the studio).
 async function paymentReceived(orderId) {
-  const [[o]] = await db.query('SELECT o.*, b.reference AS booking_reference FROM orders o LEFT JOIN bookings b ON b.id = o.booking_id WHERE o.id = ?', [orderId]);
+  const o = await orderWithItems(orderId);
   if (!o) return;
-  const [items] = await db.query('SELECT name, unit_cents, qty FROM order_items WHERE order_id = ? ORDER BY id', [orderId]);
-  o.items = items;
   const { studio, name } = await ctx();
   const blocks = [
     { p: `Hi ${o.name}, we have received your payment of ${usd(o.total_cents)}. Thank you!` },
@@ -94,4 +143,23 @@ async function paymentReceived(orderId) {
   return deliver(studio, o.email, `Payment received: ${o.reference} · ${name}`, `We received your payment of ${usd(o.total_cents)}.`, blocks);
 }
 
-module.exports = { bookingReceived, awaitingPayment, paymentReceived, render };
+// The studio's copy of a confirmed payment.
+async function adminPaymentReceived(orderId) {
+  const o = await orderWithItems(orderId);
+  if (!o) return;
+  const { studio, url, name } = await ctx();
+  const to = adminAddress(studio);
+  if (!to) return;
+  const blocks = [
+    { p: `A payment has been confirmed.` },
+    { code: o.reference },
+    { rows: [
+      ['Customer', o.name], ['Email', o.email], ['Method', o.method], ['Total', usd(o.total_cents)],
+      ['Booking', o.booking_reference || ''], ...itemRows(o)
+    ].filter(r => r[1] !== '' && r[1] != null) },
+    { link: ['Open the admin area', adminLink(url)] }
+  ];
+  return deliver(studio, to, `Payment received: ${o.reference} · ${name}`, `${o.name} paid ${usd(o.total_cents)}.`, blocks);
+}
+
+module.exports = { bookingReceived, adminNewBooking, awaitingPayment, adminPaymentReserved, paymentReceived, adminPaymentReceived, render };

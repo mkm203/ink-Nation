@@ -1,22 +1,25 @@
-// End-to-end API test. It uses a SEPARATE database called <DB_NAME>_test, so your real data is never touched.
+// End-to-end API test. It uses a SEPARATE SQLite file, so your real data is never touched.
 // Run with: npm test
 process.env.NODE_ENV = 'test';
-process.env.DB_NAME = (process.env.DB_NAME || 'inkster_db').replace(/_test$/, '') + '_test';
 require('dotenv').config({ quiet: true });
-process.env.DB_NAME = (process.env.DB_NAME || 'inkster_db').replace(/_test$/, '') + '_test';
+
+const fs = require('fs');
+const path = require('path');
+process.env.DB_FILE = path.join(__dirname, '..', 'data', 'inkster-test.db');
+process.env.ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'studio@example.com';
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'test-admin-pass';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-test-secret-test-secret';
 process.env.SLOTS_PER_ARTIST_PER_DAY = '2';
 process.env.STRIPE_SECRET_KEY = 'sk_test_fake_key';
 process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
 
-const fs = require('fs');
-const path = require('path');
 const assert = require('assert');
 const crypto = require('crypto');
 const http = require('http');
 const { execFileSync } = require('child_process');
 
+// Start from an empty test database every run.
+for (const f of [process.env.DB_FILE, process.env.DB_FILE + '-wal', process.env.DB_FILE + '-shm']) fs.rmSync(f, { force: true });
 execFileSync('node', [path.join(__dirname, 'init-db.js')], { env: process.env, stdio: 'ignore' });
 const db = require('../config/db');
 const orders = require('../src/models/orders');
@@ -24,7 +27,7 @@ const pay = require('../src/lib/payments');
 const app = require('../server');
 
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 1)]);
-const uploads = path.join(__dirname, '..', 'uploads');
+const uploads = require('../src/lib/images').UPLOAD_DIR;
 const keep = new Set(fs.readdirSync(uploads)); // files that were there before the test: never touched
 const pad = n => String(n).padStart(2, '0');
 function nextWeekday(minDays, skip = 0) {
@@ -61,7 +64,7 @@ async function t(name, fn) {
 }
 
 (async () => {
-  await db.query('DELETE FROM bookings'); await db.query('DELETE FROM inquiries'); await db.query('DELETE FROM orders'); await db.query('DELETE FROM reviews');
+  await db.query('DELETE FROM bookings'); await db.query('DELETE FROM inquiries'); await db.query('DELETE FROM orders'); await db.query('DELETE FROM reviews'); await db.query('DELETE FROM artist_photos');
   // A fake Stripe and a fake bitcoin price service, so payments can be tested without real accounts or money.
   const fake = { sessions: new Map(), n: 0, stripeDown: false, rate: '50000.00', rateDown: false, lastForm: null };
   const fakeServer = http.createServer((req, res) => {
@@ -210,24 +213,47 @@ async function t(name, fn) {
     assert.equal((await call('DELETE', `/api/admin/artists/${id}`)).status, 204);
     assert.equal((await call('DELETE', `/api/admin/artists/${id}`)).status, 404);
   });
-  await t('work: create, bad artist (422), delete; FAQ: create, edit, delete', async () => {
-    const w = await call('POST', '/api/admin/works', form({ title: 'Test piece', artist_id: laura.id, description: 'Desc', art_key: 'mandala', sort_order: 8 })); assert.equal(w.status, 201);
-    assert.equal((await call('POST', '/api/admin/works', form({ title: 'Bad', artist_id: 9999, description: 'd' }))).status, 422);
+  await t('recent work: studio pieces only; create, edit, delete; FAQ: create, edit, delete', async () => {
+    const w = await call('POST', '/api/admin/works', form({ title: 'Test piece', description: 'Desc', art_key: 'mandala', sort_order: 8 })); assert.equal(w.status, 201);
+    assert.equal(w.json.artist_id, null);
+    assert.ok((await call('GET', '/api/works', undefined, { auth: false })).json.some(x => x.id === w.json.id));
     assert.equal((await call('DELETE', `/api/admin/works/${w.json.id}`)).status, 204);
     const f = await call('POST', '/api/admin/faqs', { question: 'Q?', answer: 'A.', sort_order: 9 }); assert.equal(f.status, 201);
     assert.equal((await call('PUT', `/api/admin/faqs/${f.json.id}`, { question: 'Q2?', answer: 'A2.', sort_order: 9 })).json.question, 'Q2?');
     assert.equal((await call('DELETE', `/api/admin/faqs/${f.json.id}`)).status, 204);
   });
-  await t('reviews: add, edit, hide and delete; the public sees only active reviews', async () => {
+  await t('artist gallery: needs a picture, appears with the artist, never in recent work, files cleaned up', async () => {
+    const a = await call('POST', '/api/admin/artists', form({ slug: 'gallery-test', name: 'Gallery Test', bio: 'x', specialty: 'y', experience_years: 1, art_key: 'rose', sort_order: 10, active: 1 }));
+    assert.equal(a.status, 201);
+    const g1 = await call('POST', '/api/admin/artist_photos', form({ artist_id: a.json.id, title: 'Piece one', sort_order: 1 }, { field: 'image', buffer: PNG }));
+    assert.equal(g1.status, 201); assert.match(g1.json.image, /^\/uploads\/[a-f0-9]+\.png$/);
+    const g2 = await call('POST', '/api/admin/artist_photos', form({ artist_id: a.json.id, title: 'Piece two', sort_order: 2 }, { field: 'image', buffer: PNG }));
+    assert.equal(g2.status, 201);
+    assert.equal((await call('POST', '/api/admin/artist_photos', form({ artist_id: a.json.id, title: 'No picture' }))).status, 400);
+    assert.equal((await call('POST', '/api/admin/artist_photos', form({ artist_id: 9999, title: 'Bad' }, { field: 'image', buffer: PNG }))).status, 422);
+    const artist = (await call('GET', '/api/artists', undefined, { auth: false })).json.find(x => x.id === a.json.id);
+    assert.equal(artist.photos.length, 2); assert.equal(artist.photos[0].title, 'Piece one');
+    assert.ok(!(await call('GET', '/api/works', undefined, { auth: false })).json.some(w => w.artist_id === a.json.id), 'artist work never appears in recent work');
+    const file1 = path.join(uploads, path.basename(g1.json.image));
+    assert.equal((await call('DELETE', `/api/admin/artist_photos/${g1.json.id}`)).status, 204);
+    await new Promise(r => setTimeout(r, 100)); assert.ok(!fs.existsSync(file1), 'deleting a gallery photo removes its file');
+    const file2 = path.join(uploads, path.basename(g2.json.image));
+    assert.equal((await call('DELETE', `/api/admin/artists/${a.json.id}`)).status, 204);
+    await new Promise(r => setTimeout(r, 100)); assert.ok(!fs.existsSync(file2), 'deleting an artist removes the rest of the gallery files');
+  });
+  await t('reviews: add with a reviewer photo, edit, hide and delete; the public sees only active reviews', async () => {
     assert.equal((await call('POST', '/api/admin/reviews', { name: '', review: 'x', rating: '5' })).status, 422);
     assert.equal((await call('POST', '/api/admin/reviews', { name: 'Jo', review: 'Lovely work.', rating: '9' })).status, 422);
-    const c = await call('POST', '/api/admin/reviews', { name: 'Jo', rating: '5', review: 'Lovely work.', sort_order: 1, active: 1 });
-    assert.equal(c.status, 201); assert.equal(c.json.rating, 5);
-    assert.ok((await call('GET', '/api/reviews', undefined, { auth: false })).json.some(r => r.id === c.json.id));
+    const c = await call('POST', '/api/admin/reviews', form({ name: 'Jo', rating: '5', review: 'Lovely work.', sort_order: 1, active: 1 }, { field: 'image', buffer: PNG }));
+    assert.equal(c.status, 201); assert.equal(c.json.rating, 5); assert.ok(c.json.image);
+    const imgFile = path.join(uploads, path.basename(c.json.image)); assert.ok(fs.existsSync(imgFile));
+    const pub = (await call('GET', '/api/reviews', undefined, { auth: false })).json.find(r => r.id === c.json.id);
+    assert.equal(pub.image, c.json.image, 'the reviewer photo is public');
     const u = await call('PUT', `/api/admin/reviews/${c.json.id}`, { name: 'Jo B', rating: '4', review: 'Updated.', sort_order: 1, active: 0 });
-    assert.equal(u.status, 200); assert.equal(u.json.rating, 4);
+    assert.equal(u.status, 200); assert.equal(u.json.rating, 4); assert.equal(u.json.image, c.json.image, 'editing text keeps the photo');
     assert.ok(!(await call('GET', '/api/reviews', undefined, { auth: false })).json.some(r => r.id === c.json.id), 'hidden review is not public');
     assert.equal((await call('DELETE', `/api/admin/reviews/${c.json.id}`)).status, 204);
+    await new Promise(r => setTimeout(r, 100)); assert.ok(!fs.existsSync(imgFile), 'deleting a review removes its photo');
   });
   await t('studio details and hero photo show on the public API', async () => {
     assert.equal((await call('PUT', '/api/admin/studio', { studio_name: 'Ink Nation', phone: '+237 611 111 111', email: 'a@b.cd', address: 'Somewhere 1', hours: 'Mon-Fri', pricing_note: 'Prices are estimates.', discover_intro: 'Hello.' })).status, 200);
@@ -391,7 +417,7 @@ async function t(name, fn) {
   await t('unpaid orders older than a day are cancelled and give stock back', async () => {
     const o = (await call('POST', '/api/orders', { ...buyer, method: 'chime', items: [{ product_id: prod.balm, qty: 4 }] })).json;
     assert.equal(await stockOf(prod.balm), 6);
-    await db.query("UPDATE orders SET created_at = NOW() - INTERVAL 2 DAY WHERE reference = ?", [o.reference]);
+    await db.query("UPDATE orders SET created_at = datetime('now','-2 days') WHERE reference = ?", [o.reference]);
     assert.ok((await orders.expireStale()) >= 1);
     assert.equal((await call('GET', `/api/orders/${o.reference}?email=${buyer.email}`)).json.status, 'cancelled'); assert.equal(await stockOf(prod.balm), 10);
   });
@@ -530,6 +556,8 @@ async function t(name, fn) {
     assert.ok(m.subject.includes(r.json.reference)); assert.ok(m.text.includes('Small tattoo') && m.text.includes('$200 DEPOSIT') && m.text.includes(r.json.reference));
     assert.ok(m.html.includes('Mia &lt;b&gt;Mail&lt;/b&gt;') && !m.html.includes('<b>Mail</b>'), 'names are escaped in the HTML');
     assert.ok(m.html.startsWith('<!doctype html>'));
+    const am = await waitMail(x => x.to === 'studio@example.com' && /New booking request/.test(x.subject));
+    assert.ok(am.subject.includes(r.json.reference) && am.text.includes('Small tattoo') && am.text.includes('mia@example.com'), 'the studio gets its own copy');
   });
   await t('no-size booking email has no deposit section; a failed booking sends no email', async () => {
     mailer.outbox.length = 0;
@@ -546,14 +574,17 @@ async function t(name, fn) {
     const m = await waitMail(x => x.to === 'eli@example.com' && /Payment reserved/.test(x.subject));
     assert.ok(m.subject.includes(o.reference)); for (const s of ['pay@inknation.example', '$36', o.reference, '24 hours', 'I have sent the payment']) assert.ok(m.text.includes(s), 'missing: ' + s);
     assert.equal(m.replyTo, 'a@b.cd', 'replies go to the studio email');
+    const am = await waitMail(x => x.to === 'studio@example.com' && /Payment reserved/.test(x.subject) && x.text.includes(o.reference));
+    assert.ok(am.text.includes('zelle') && am.text.includes('$36'), 'the studio is told about the reservation');
   });
   await t('payment reserved: Bitcoin and card emails carry the amount/address and the pay link', async () => {
     mailer.outbox.length = 0; fake.rate = '50000.00'; pay.resetRateCache();
     await call('POST', '/api/orders', { ...mailBuyer, method: 'bitcoin', items: [{ product_id: mp, qty: 1 }] });
-    const b = await waitMail(x => /Payment reserved/.test(x.subject)); assert.ok(b.text.includes('0.00036000 BTC') && b.text.includes('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq'));
+    const b = await waitMail(x => x.to === 'eli@example.com' && /Payment reserved/.test(x.subject)); assert.ok(b.text.includes('0.00036000 BTC') && b.text.includes('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq'));
     mailer.outbox.length = 0;
     const c = (await call('POST', '/api/orders', { ...mailBuyer, method: 'card', items: [{ product_id: mp, qty: 1 }] })).json;
-    const cm = await waitMail(x => /Payment reserved/.test(x.subject)); assert.ok(cm.text.includes(c.payment.url) && cm.html.includes(c.payment.url));
+    const cm = await waitMail(x => x.to === 'eli@example.com' && /Payment reserved/.test(x.subject)); assert.ok(cm.text.includes(c.payment.url) && cm.html.includes(c.payment.url));
+    await waitMail(x => x.to === 'studio@example.com' && /Payment reserved/.test(x.subject) && x.text.includes(c.reference));
   });
   await t('payment reserved for a booking deposit says so', async () => {
     mailer.outbox.length = 0;
@@ -562,25 +593,31 @@ async function t(name, fn) {
     const [[b]] = await db.query("SELECT reference, email FROM bookings WHERE email = 'mia@example.com'");
     const r = await call('POST', `/api/bookings/${b.reference}/deposit`, { email: b.email, method: 'chime' }); assert.equal(r.status, 201);
     const m = await waitMail(x => x.to === 'mia@example.com' && /Payment reserved/.test(x.subject)); assert.ok(m.text.includes('booking deposit') && m.text.includes('$200') && m.text.includes('$inknation'));
+    await waitMail(x => x.to === 'studio@example.com' && /Payment reserved/.test(x.subject) && x.text.includes(r.json.reference));
   });
   await t('payment received: email when the studio marks it paid, and when Stripe confirms; not twice', async () => {
     const [[row]] = await db.query("SELECT id, reference FROM orders WHERE email = 'eli@example.com' AND method = 'zelle' ORDER BY id DESC LIMIT 1");
     mailer.outbox.length = 0;
     await call('PATCH', `/api/admin/orders/${row.id}`, { status: 'paid' });
     const m = await waitMail(x => x.to === 'eli@example.com' && /Payment received/.test(x.subject)); assert.ok(m.text.includes('$36') && m.text.includes(row.reference));
+    const am = await waitMail(x => x.to === 'studio@example.com' && /Payment received/.test(x.subject) && x.text.includes(row.reference));
+    assert.ok(am.text.includes('$36'), 'the studio is told about the payment');
     await call('PATCH', `/api/admin/orders/${row.id}`, { status: 'fulfilled' }); await new Promise(r => setTimeout(r, 300));
-    assert.equal(mailer.outbox.filter(x => /Payment received/.test(x.subject)).length, 1, 'only one "received" email');
+    assert.equal(mailer.outbox.filter(x => x.to === 'eli@example.com' && /Payment received/.test(x.subject)).length, 1, 'only one "received" email');
+    assert.equal(mailer.outbox.filter(x => x.to === 'studio@example.com' && /Payment received/.test(x.subject)).length, 1, 'only one studio copy');
     // Stripe path
     mailer.outbox.length = 0;
     const c = (await call('POST', '/api/orders', { ...mailBuyer, method: 'card', items: [{ product_id: mp, qty: 1 }] })).json;
     const s = [...fake.sessions.values()].pop(); s.payment_status = 'paid';
     await call('GET', `/api/orders/${c.reference}?email=${mailBuyer.email}`);
-    await waitMail(x => /Payment received/.test(x.subject) && x.text.includes(c.reference));
+    await waitMail(x => x.to === 'eli@example.com' && /Payment received/.test(x.subject) && x.text.includes(c.reference));
+    await waitMail(x => x.to === 'studio@example.com' && /Payment received/.test(x.subject) && x.text.includes(c.reference));
     // deposit paid by studio
     const [[b]] = await db.query("SELECT reference, email FROM bookings WHERE email = 'mia@example.com'");
     const [[d]] = await db.query("SELECT id FROM orders WHERE email = 'mia@example.com' AND status = 'awaiting_payment' LIMIT 1");
     mailer.outbox.length = 0; await call('PATCH', `/api/admin/orders/${d.id}`, { status: 'paid' });
     const dm = await waitMail(x => x.to === 'mia@example.com' && /Payment received/.test(x.subject)); assert.ok(dm.text.includes('deposit') && dm.text.includes(b.reference));
+    await waitMail(x => x.to === 'studio@example.com' && /Payment received/.test(x.subject) && x.text.includes(b.reference));
   });
   await t('email trouble never breaks the customer: unset SMTP returns false quietly', async () => {
     // Real .env settings must not leak into this check (or a real email could be sent), so hide them for this test.
@@ -619,7 +656,7 @@ async function t(name, fn) {
     assert.equal((await call('GET', '/api/admin/stats')).status, 401);
   });
 
-  await db.query('DELETE FROM bookings'); await db.query('DELETE FROM inquiries'); await db.query('DELETE FROM orders'); await db.query('DELETE FROM reviews');
+  await db.query('DELETE FROM bookings'); await db.query('DELETE FROM inquiries'); await db.query('DELETE FROM orders'); await db.query('DELETE FROM reviews'); await db.query('DELETE FROM artist_photos');
   await db.query("UPDATE payment_methods SET enabled = 0, account = ''");
   for (const f of fs.readdirSync(uploads)) if (!keep.has(f)) fs.unlinkSync(path.join(uploads, f)); // only files this test created
   server.close(); fakeServer.close(); await db.end();
