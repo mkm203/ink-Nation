@@ -3,7 +3,7 @@ const path = require('path');
 const express = require('express');
 const multer = require('multer');
 const { HttpError } = require('./src/lib/errors');
-const { UPLOAD_DIR } = require('./src/lib/images');
+const { UPLOAD_DIR, serveStored, inDatabase } = require('./src/lib/images');
 const db = require('./config/db');
 
 const app = express();
@@ -31,6 +31,7 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
 // Uploaded photos, then the website itself.
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '7d', index: false }));
+app.get('/uploads/:name', serveStored); // files kept in the database (see src/lib/images.js)
 app.use(express.static(path.join(__dirname, 'public')));
 
 // One place that turns every error into JSON the page can show.
@@ -47,23 +48,41 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = Number(process.env.PORT) || 3000;
-if (require.main === module) {
-  // On a fresh host (Render) the schema and starter content are created on first boot.
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Creates the tables and starter content on first boot (safe to repeat). A hosted database can need a moment, so try a few times.
+async function ready() {
   const { init } = require('./scripts/init-db');
-  init()
+  for (let attempt = 1; ; attempt++) {
+    try { return await init(); }
+    catch (e) {
+      if (attempt >= 4 || !db.REMOTE) throw e;
+      console.error(`Database not ready (${e.message}). Trying again in 3 seconds (${attempt}/4)...`);
+      await sleep(3000);
+    }
+  }
+}
+
+if (require.main === module) {
+  ready()
     .then(() => {
-      console.log(`Database file: ${db.DB_FILE}`);
-      console.log(`Uploads folder: ${UPLOAD_DIR}`);
-      // Render's filesystem is wiped on every deploy unless the data is under a mounted disk.
-      if ((process.env.RENDER || process.env.RENDER_SERVICE_ID) && !String(db.DB_FILE).startsWith('/var/data')) {
-        console.warn('WARNING: the database is not on a persistent disk. Attach a disk at /var/data and set');
-        console.warn('         DB_FILE=/var/data/inkster.db and UPLOAD_DIR=/var/data/uploads, or data is lost on deploy.');
+      console.log(`Database: ${db.DB_FILE}`);
+      console.log(`Uploads: ${inDatabase() ? 'kept in the database' : UPLOAD_DIR}`);
+      // Render's free plan erases its files on every deploy and after idle time: data must live on Turso.
+      if ((process.env.RENDER || process.env.RENDER_SERVICE_ID) && !db.REMOTE && !String(db.DB_FILE).startsWith('/var/data')) {
+        console.warn('WARNING: this data will be lost on the next deploy or restart. Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN');
+        console.warn('         (a free database, see DEPLOY.md), or attach a paid disk at /var/data with DB_FILE=/var/data/inkster.db.');
       }
       app.listen(PORT, () => console.log(`Ink Nation is running at http://localhost:${PORT}`));
       // Unpaid orders give their stock back after a day.
       const sweep = () => require('./src/models/orders').expireStale().catch(e => console.error('Order sweep failed:', e.message));
       sweep(); setInterval(sweep, 10 * 60 * 1000).unref();
     })
-    .catch(e => { console.error('Database setup failed:', e.message, '\nCheck DB_FILE (and UPLOAD_DIR on a host) then try again.'); process.exit(1); });
+    .catch(e => {
+      console.error('Database setup failed:', e.message);
+      console.error(db.REMOTE
+        ? 'Check TURSO_DATABASE_URL (it looks like libsql://name-user.turso.io) and TURSO_AUTH_TOKEN under Environment on Render. See DEPLOY.md.'
+        : 'Check DB_FILE (and UPLOAD_DIR on a host) then try again.');
+      process.exit(1);
+    });
 }
 module.exports = app;

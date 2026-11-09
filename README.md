@@ -6,7 +6,7 @@ A website for a tattoo studio with a real back end.
   They get a reference code and can check or cancel their request later.
 - **Prices and deposits:** each tattoo size has a price (or range), a deposit and an optional photo. Visitors see them on the **Discover** page and in the booking form, and can **pay the deposit online** right after booking.
 - **Payments:** card / Apple Pay / Google Pay (Stripe), **Zelle**, **Chime** or **Bitcoin**. The public shop/cart was removed; the shop API and order tables are still available.
-- **Emails:** customers and the studio are emailed when a booking is received, when a payment is reserved, and when it is paid (needs SMTP details in `.env`, see `DEPLOY.md`).
+- **Emails:** customers and the studio are emailed when a booking is received, when a payment is reserved, and when it is paid (needs SMTP details in `.env`, or `BREVO_API_KEY` on Render's free plan; see `DEPLOY.md`).
 - **The studio** signs in at `/admin/` to manage bookings, orders and payments, prices, ways to pay, artists, artist photos, recent work, reviews, FAQ, questions, contact details,
   and to **upload all the photos** (home page, work slides, artist portraits, galleries, price tiers, reviewer photos).
 - **Stack:** Node.js 22.5+, Express 5, **SQLite** (`node:sqlite`, one file, no database server), plain HTML/CSS/JavaScript on the front end.
@@ -40,7 +40,7 @@ npm run dev
 
 5. Open **http://localhost:3000** for the website and **http://localhost:3000/admin/** for the admin area.
 
-To put it online (Render, persistent disk, Stripe webhook), follow **[DEPLOY.md](DEPLOY.md)**.
+To put it online for free (Render + a free Turso database, email, Stripe webhook), follow **[DEPLOY.md](DEPLOY.md)**.
 
 ## 2. Adding your photos
 
@@ -124,7 +124,7 @@ It uses a **separate SQLite file** (`data/inkster-test.db`), deletes it before e
 - Serve it over **HTTPS** (a host such as Render provides it) and run with `NODE_ENV=production`, which makes the admin cookie HTTPS-only. (On plain `http://localhost`, leave `NODE_ENV` unset.)
 - **Notifications:** booking requests, payment reservations and received payments are emailed to the customer and to `ADMIN_EMAIL` (or the studio email). Without SMTP settings the app logs one warning and continues; everything is still in the admin area.
 - The contact details, artist names and texts are examples. Replace them in the admin area.
-- Back up the SQLite file (`DB_FILE`) and the `UPLOAD_DIR` folder.
+- Back up the SQLite file (`DB_FILE`) and the `UPLOAD_DIR` folder. On the free Render setup the data lives in Turso instead (see DEPLOY.md); photos are stored inside it.
 - Money: Zelle, Chime and Bitcoin payments are confirmed **by you** in Admin > Orders & payments after you see the money in your own account. Card payments need a Stripe account (`UPDATE.md`) and a webhook pointing at `/api/webhooks/stripe`.
 - Step-by-step hosting instructions: **[DEPLOY.md](DEPLOY.md)**.
 

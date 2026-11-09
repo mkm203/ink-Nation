@@ -67,6 +67,10 @@ async function ensureColumn(table, column, ddl) {
 
 async function init() {
   await db.exec(fs.readFileSync(path.join(__dirname, '..', 'sql', 'schema.sql'), 'utf8'));
+  if (db.REMOTE) {
+    const [[fk]] = await db.query('PRAGMA foreign_keys');
+    if (fk && Number(fk.foreign_keys) === 0) console.warn('Note: this database does not enforce foreign keys, so deleting an artist or an order can leave related rows behind.');
+  }
 
   if (!(await count('artists'))) {
     for (const a of artists) await db.query('INSERT INTO artists (slug,name,bio,specialty,experience_years,art_key,sort_order) VALUES (?,?,?,?,?,?,?)', a);

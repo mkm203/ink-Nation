@@ -18,8 +18,18 @@ const crypto = require('crypto');
 const http = require('http');
 const { execFileSync } = require('child_process');
 
+// Photos are saved on disk during the tests (a section near the end tests saving them in the database).
+process.env.UPLOAD_STORAGE = process.env.UPLOAD_STORAGE || 'disk';
+
 // Start from an empty test database every run.
 for (const f of [process.env.DB_FILE, process.env.DB_FILE + '-wal', process.env.DB_FILE + '-shm']) fs.rmSync(f, { force: true });
+// To test the Turso connection, run a local libSQL server (sqld) and set TURSO_DATABASE_URL=http://127.0.0.1:8080.
+// The tests empty that database first, so they refuse to run against anything that is not on this computer.
+if ((process.env.TURSO_DATABASE_URL || '').trim()) {
+  if (!/^(https?|libsql):\/\/(127\.0\.0\.1|localhost)(:|\/|$)/i.test(process.env.TURSO_DATABASE_URL.trim())) { console.error('The tests only run against a libSQL server on this computer, never a real Turso database.'); process.exit(1); }
+  execFileSync('node', ['-e', "const db=require('./config/db');(async()=>{for(const t of ['order_items','orders','payment_methods','products','price_tiers','inquiries','bookings','settings','reviews','faqs','artist_photos','works','artists','ink_files'])await db.exec('DROP TABLE IF EXISTS '+t);await db.end()})()"], { cwd: path.join(__dirname, '..'), env: process.env, stdio: 'inherit' });
+  console.log('(running against the libSQL server at ' + process.env.TURSO_DATABASE_URL + ')');
+}
 execFileSync('node', [path.join(__dirname, 'init-db.js')], { env: process.env, stdio: 'ignore' });
 const db = require('../config/db');
 const orders = require('../src/models/orders');
@@ -70,6 +80,7 @@ async function t(name, fn) {
   const fakeServer = http.createServer((req, res) => {
     let raw = ''; req.on('data', c => raw += c); req.on('end', () => {
       const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+      if (req.url === '/brevo') { fake.brevo = { key: req.headers['api-key'], body: JSON.parse(raw || '{}') }; return fake.brevoDown ? send(401, { message: 'Key not found' }) : send(201, { messageId: '<x@y>' }); }
       if (req.url === '/rate') return fake.rateDown ? send(500, {}) : send(200, { data: { amount: fake.rate } });
       if (!/Bearer sk_test_/.test(req.headers.authorization || '')) return send(401, { error: { message: 'no key' } });
       if (fake.stripeDown) return send(500, { error: { message: 'down' } });
@@ -649,6 +660,76 @@ async function t(name, fn) {
     assert.equal((await call('DELETE', '/api/admin/studio/video')).status, 204); await new Promise(r => setTimeout(r, 100));
     assert.ok(!fs.existsSync(path.join(uploads, path.basename(ok2.json.team_video)))); assert.equal((await call('GET', '/api/studio')).json.team_video, '');
     assert.equal((await call('POST', '/api/admin/studio/video', vf(MP4), { auth: false })).status, 401);
+  });
+
+  const withEnv = async (vars, fn) => { const was = {}; for (const k of Object.keys(vars)) { was[k] = process.env[k]; if (vars[k] === undefined) delete process.env[k]; else process.env[k] = vars[k]; } try { return await fn(); } finally { for (const k of Object.keys(vars)) { if (was[k] === undefined) delete process.env[k]; else process.env[k] = was[k]; } } };
+
+  console.log('\nUploads kept in the database (for hosts that erase their disk)');
+  await withEnv({ UPLOAD_STORAGE: 'db' }, async () => {
+    const BIG = Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from('ftypisom'), Buffer.alloc(2.5 * 1024 * 1024 + 123)].map((b, i) => i === 2 ? b.fill(9) : b)); // about 11 pieces of 256 KB
+    let imgUrl, vidUrl;
+    await t('photo is saved in the database (not in /uploads), and served with the right type and exact bytes', async () => {
+      const before = fs.readdirSync(uploads).length;
+      const h = await call('POST', '/api/admin/studio/hero', form({}, { field: 'image', buffer: PNG })); assert.equal(h.status, 200);
+      imgUrl = h.json.hero_image; assert.match(imgUrl, /^\/uploads\/[a-f0-9]{24}\.png$/);
+      assert.equal(fs.readdirSync(uploads).length, before, 'nothing written to disk');
+      const r = await fetch(base + imgUrl); assert.equal(r.status, 200); assert.equal(r.headers.get('content-type'), 'image/png');
+      assert.ok(Buffer.from(await r.arrayBuffer()).equals(PNG));
+      assert.match(r.headers.get('cache-control'), /max-age=604800/);
+    });
+    await t('video is cut into pieces, played back in ranges (Safari needs this), wrong ranges refused', async () => {
+      const f = new FormData(); f.append('video', new Blob([BIG], { type: 'video/mp4' }), 'v.mp4');
+      const up = await call('POST', '/api/admin/studio/video', f); assert.equal(up.status, 200); vidUrl = up.json.team_video; assert.match(vidUrl, /\.mp4$/);
+      const [[{ n }]] = await db.query('SELECT COUNT(*) n FROM ink_files WHERE name = ?', [path.basename(vidUrl)]); assert.equal(n, Math.ceil(BIG.length / (256 * 1024)));
+      const all = await fetch(base + vidUrl); assert.equal(all.status, 200); assert.equal(all.headers.get('accept-ranges'), 'bytes'); assert.ok(Buffer.from(await all.arrayBuffer()).equals(BIG));
+      const r1 = await fetch(base + vidUrl, { headers: { Range: 'bytes=0-1' } }); assert.equal(r1.status, 206); assert.equal(r1.headers.get('content-range'), `bytes 0-1/${BIG.length}`); assert.equal((await r1.arrayBuffer()).byteLength, 2);
+      const r2 = await fetch(base + vidUrl, { headers: { Range: `bytes=${BIG.length - 10}-` } }); assert.equal(r2.status, 206); assert.ok(Buffer.from(await r2.arrayBuffer()).equals(BIG.subarray(BIG.length - 10)));
+      const r3 = await fetch(base + vidUrl, { headers: { Range: 'bytes=-5' } }); assert.equal(r3.status, 206); assert.equal((await r3.arrayBuffer()).byteLength, 5);
+      const r4 = await fetch(base + vidUrl, { headers: { Range: `bytes=${BIG.length + 5}-` } }); assert.equal(r4.status, 416);
+      const edge = 256 * 1024; const mid = await fetch(base + vidUrl, { headers: { Range: `bytes=${edge - 2}-${edge + 1}` } }); assert.ok(Buffer.from(await mid.arrayBuffer()).equals(BIG.subarray(edge - 2, edge + 2)), 'a range across two pieces is exact');
+    });
+    await t('a file that is an exact multiple of the group size is read completely', async () => {
+      const exact = Buffer.concat([PNG, Buffer.alloc(4 * 256 * 1024 - PNG.length, 5)]); // exactly 4 pieces
+      const h = await call('POST', '/api/admin/studio/hero', form({}, { field: 'image', buffer: exact }));
+      assert.equal(h.status, 200); const r = await fetch(base + h.json.hero_image); assert.ok(Buffer.from(await r.arrayBuffer()).equals(exact));
+      imgUrl = h.json.hero_image;
+    });
+    await t('unknown or odd names give 404, never an error or a file from elsewhere', async () => {
+      for (const u of ['/uploads/000000000000000000000000.png', '/uploads/..%2Fserver.js', '/uploads/abc.png', '/uploads/' + 'a'.repeat(24) + '.exe']) assert.equal((await fetch(base + u)).status, 404, u);
+    });
+    await t('removing the photo and the video deletes their rows; files already on disk still work', async () => {
+      assert.equal((await call('DELETE', '/api/admin/studio/hero')).status, 204); assert.equal((await call('DELETE', '/api/admin/studio/video')).status, 204);
+      assert.equal((await fetch(base + imgUrl)).status, 404); assert.equal((await fetch(base + vidUrl)).status, 404);
+      const [[{ n }]] = await db.query('SELECT COUNT(*) n FROM ink_files'); assert.equal(n, 0, 'no pieces left behind');
+      const old = crypto.randomBytes(12).toString('hex') + '.png'; fs.writeFileSync(path.join(uploads, old), PNG);
+      assert.equal((await fetch(base + '/uploads/' + old)).status, 200);
+    });
+    await t('a photo made by a booking form also lives in the database and is deleted with the booking', async () => {
+      const f = form({ name: 'Photo Person', phone: '+237 600 000 077', email: 'photo@example.com', piece: 'Half sleeve', date: nextWeekday(20, 3), artist_id: laura.id }, { field: 'reference_image', buffer: PNG });
+      const r = await call('POST', '/api/bookings', f, { auth: false }); assert.equal(r.status, 201, JSON.stringify(r.json));
+      const [[b]] = await db.query('SELECT id, reference_image FROM bookings WHERE reference = ?', [r.json.reference]);
+      assert.equal((await fetch(base + b.reference_image)).status, 200);
+      assert.equal((await call('DELETE', `/api/admin/bookings/${b.id}`)).status, 204);
+      assert.equal((await fetch(base + b.reference_image)).status, 404);
+    });
+  });
+
+  console.log('\nEmail through Brevo (for hosts that block SMTP)');
+  await t('with BREVO_API_KEY the email goes out over the web API with the right sender, recipient and content', async () => {
+    await withEnv({ NODE_ENV: 'production', BREVO_API_KEY: 'xkeysib-test', BREVO_API_URL: process.env.STRIPE_API_BASE + '/brevo', MAIL_FROM: 'Ink Nation <hello@inknation.example>', SMTP_HOST: undefined }, async () => {
+      assert.equal(mailer.configured(), true);
+      assert.equal(await mailer.send({ to: 'mia@example.com', subject: 'Hello', text: 'plain', html: '<p>rich</p>', replyTo: 'Studio <studio@inknation.example>' }), true);
+      assert.equal(fake.brevo.key, 'xkeysib-test');
+      assert.deepEqual(fake.brevo.body, { sender: { name: 'Ink Nation', email: 'hello@inknation.example' }, to: [{ email: 'mia@example.com' }], subject: 'Hello', textContent: 'plain', htmlContent: '<p>rich</p>', replyTo: { name: 'Studio', email: 'studio@inknation.example' } });
+    });
+  });
+  await t('Brevo refusing the key is logged and returns false, it never throws into a booking', async () => {
+    fake.brevoDown = true; const e = console.error; let logged = '';
+    console.error = m => { logged += m; };
+    try {
+      await withEnv({ NODE_ENV: 'production', BREVO_API_KEY: 'bad', BREVO_API_URL: process.env.STRIPE_API_BASE + '/brevo', MAIL_FROM: 'hello@inknation.example' }, async () => assert.equal(await mailer.send({ to: 'x@example.com', subject: 's', text: 't' }), false));
+    } finally { console.error = e; fake.brevoDown = false; }
+    assert.match(logged, /Brevo answered 401/);
   });
 
   await t('sign out ends the session', async () => {

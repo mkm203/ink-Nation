@@ -5,7 +5,7 @@ const { HttpError } = require('./errors');
 const env = k => (process.env[k] || '').trim();
 const stripeBase = () => env('STRIPE_API_BASE') || 'https://api.stripe.com';
 const stripeConfigured = () => /^sk_(test|live)_/.test(env('STRIPE_SECRET_KEY')) || (env('STRIPE_API_BASE') && !!env('STRIPE_SECRET_KEY'));
-const appUrl = () => (env('APP_URL') || `http://localhost:${process.env.PORT || 3000}`).replace(/\/+$/, '');
+const appUrl = () => (env('APP_URL') || env('RENDER_EXTERNAL_URL') || `http://localhost:${process.env.PORT || 3000}`).replace(/\/+$/, '');
 
 async function stripe(method, path, form) {
   let res;

@@ -1,10 +1,8 @@
 // Video upload for the studio clip. Like images: held in memory, identified by its first bytes (MP4 or WebM), saved under a random name.
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
 const { HttpError } = require('./errors');
-const { UPLOAD_DIR } = require('./images');
+const { putFile } = require('./images');
 
 const MAX_MB = 30;
 const uploader = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_MB * 1024 * 1024, files: 1, fields: 5 } }).single('video');
@@ -30,7 +28,7 @@ async function saveVideo(file) {
   const ext = sniff(file.buffer);
   if (!ext) throw new HttpError(400, 'Only MP4 or WebM videos are accepted.', { video: 'Choose an MP4 or WebM video.' });
   const name = crypto.randomBytes(12).toString('hex') + '.' + ext;
-  await fs.promises.writeFile(path.join(UPLOAD_DIR, name), file.buffer);
+  await putFile(name, file.buffer);
   return '/uploads/' + name;
 }
 

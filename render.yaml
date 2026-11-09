@@ -1,28 +1,29 @@
-# Render Blueprint for the Ink Nation app.
-# The whole Express app is hosted here (the API and the website), with a persistent
-# disk so the SQLite database and the uploaded photos survive deploys and restarts.
+# Render Blueprint for the Ink Nation app (free plan).
+# The whole Express app is hosted here (the API and the website). The data lives in a free
+# Turso database, because Render's free plan erases its own files on every deploy and restart.
 #
-# 1. Push this folder to GitHub.
-# 2. On Render: New + > Blueprint, choose the repository, apply.
-# 3. Fill in the values marked "sync: false" in the dashboard.
-# See DEPLOY.md for the full walkthrough.
+# 1. Create the free Turso database (DEPLOY.md, step 1).
+# 2. Push this folder to GitHub.
+# 3. On Render: New + > Blueprint, choose the repository, apply.
+# 4. Fill in the values marked "sync: false" in the dashboard (TURSO_*, passwords, email...).
+# See DEPLOY.md for the full walkthrough, including the paid-disk alternative.
 services:
   - type: web
     name: ink-nation
     runtime: node
-    plan: starter
-    buildCommand: npm ci
+    plan: free
+    buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
-      # Everything durable lives on the mounted disk below.
-      - key: DB_FILE
-        value: /var/data/inkster.db
-      - key: UPLOAD_DIR
-        value: /var/data/uploads
+      # Everything durable (content, bookings, orders, photos, video) lives in Turso.
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
       - key: SLOTS_PER_ARTIST_PER_DAY
         value: "2"
       - key: ADMIN_PASSWORD
@@ -33,13 +34,8 @@ services:
         sync: false
       - key: APP_URL
         sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASS
+      # Email: the free plan blocks SMTP, so use Brevo's web API (DEPLOY.md, step 4).
+      - key: BREVO_API_KEY
         sync: false
       - key: MAIL_FROM
         sync: false
@@ -47,7 +43,3 @@ services:
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
-    disk:
-      name: ink-nation-data
-      mountPath: /var/data
-      sizeGB: 1

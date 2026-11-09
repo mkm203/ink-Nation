@@ -8,15 +8,17 @@
     "dev": "nodemon server.js",
     "db:init": "node scripts/init-db.js",
     "db:import": "node scripts/import-mysql.js",
+    "db:push": "node scripts/push-to-turso.js",
     "test": "node scripts/api-test.js"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.3",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.5.0",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^10.4.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {

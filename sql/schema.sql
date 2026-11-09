@@ -165,3 +165,12 @@ CREATE INDEX IF NOT EXISTS idx_artist_photos ON artist_photos (artist_id, sort_o
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status);
 CREATE INDEX IF NOT EXISTS idx_orders_booking ON orders (booking_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items (order_id);
+
+-- Uploaded photos and the studio video, kept in the database when the host erases its own files (Render's free plan does).
+-- Each file is cut into small pieces so it fits any database's limits.
+CREATE TABLE IF NOT EXISTS ink_files (
+  name TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  data BLOB NOT NULL,
+  PRIMARY KEY (name, seq)
+);

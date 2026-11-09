@@ -25,7 +25,7 @@ function login(req, res) {
   const given = req.body && req.body.password;
   if (typeof given !== 'string' || !crypto.timingSafeEqual(digest(given), digest(expected))) throw new HttpError(401, 'Wrong password.');
   const token = jwt.sign({ role: 'admin' }, SECRET, { expiresIn: '8h' });
-  res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', maxAge: EIGHT_HOURS });
+  res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'strict', secure: req.secure || process.env.NODE_ENV === 'production', maxAge: EIGHT_HOURS });
   res.json({ ok: true });
 }
 
