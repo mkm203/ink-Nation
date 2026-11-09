@@ -52,6 +52,13 @@ if (require.main === module) {
   const { init } = require('./scripts/init-db');
   init()
     .then(() => {
+      console.log(`Database file: ${db.DB_FILE}`);
+      console.log(`Uploads folder: ${UPLOAD_DIR}`);
+      // Render's filesystem is wiped on every deploy unless the data is under a mounted disk.
+      if ((process.env.RENDER || process.env.RENDER_SERVICE_ID) && !String(db.DB_FILE).startsWith('/var/data')) {
+        console.warn('WARNING: the database is not on a persistent disk. Attach a disk at /var/data and set');
+        console.warn('         DB_FILE=/var/data/inkster.db and UPLOAD_DIR=/var/data/uploads, or data is lost on deploy.');
+      }
       app.listen(PORT, () => console.log(`Ink Nation is running at http://localhost:${PORT}`));
       // Unpaid orders give their stock back after a day.
       const sweep = () => require('./src/models/orders').expireStale().catch(e => console.error('Order sweep failed:', e.message));

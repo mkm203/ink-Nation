@@ -55,6 +55,57 @@ UPLOAD_DIR=/var/data/uploads
 `NODE_ENV=production` is also set. It makes the admin cookie `Secure`, which requires
 HTTPS — Render provides it. Do not set it when testing on `http://localhost`.
 
+#### If you created the service manually (not from the Blueprint)
+
+The deploy log will show an ephemeral path such as
+`/opt/render/project/src/data/inkster.db`, and `DB_FILE` / `UPLOAD_DIR` will be missing.
+Fix it in the dashboard:
+
+1. **Upgrade to a paid instance type.** Render disks are not available on free services.
+2. Open the service → **Disk** → **Add Disk**:
+   - Name: `ink-nation-data`
+   - Mount path: `/var/data`
+   - Size: `1 GB`
+3. Open **Environment** and add:
+   - `DB_FILE=/var/data/inkster.db`
+   - `UPLOAD_DIR=/var/data/uploads`
+   - `NODE_ENV=production`
+   - `APP_URL=https://YOUR-APP.onrender.com`
+4. Save. Render redeploys automatically.
+
+After the deploy, the log must contain:
+
+```
+Database file: /var/data/inkster.db
+Uploads folder: /var/data/uploads
+```
+
+If you still see `/opt/render/project/src/data/...`, the environment variables were not
+saved on this service. Note that Render's dashboard never shows a "database" for SQLite:
+it is just a file on the disk. `GET /api/health` returning `{"status":"ok","database":"connected"}`
+confirms the connection.
+
+#### Copying your local data to the Render disk
+
+The disk starts empty, so the app seeds fresh content. To keep your imported content:
+
+1. Add the disk and environment variables above and deploy once.
+2. Set up SSH: Render **Account Settings → SSH Public Keys**, then copy the SSH command
+   from the service's **Connect → SSH** tab. It looks like
+   `ssh srv-xxxxx@ssh.YOUR_REGION.render.com`.
+3. Upload the database and images (stop the service first, or restart right after):
+
+```powershell
+scp -s .\data\inkster.db  srv-xxxxx@ssh.YOUR_REGION.render.com:/var/data/inkster.db
+scp -s -r .\uploads\*     srv-xxxxx@ssh.YOUR_REGION.render.com:/var/data/uploads/
+```
+
+4. Restart the service. The log should still show `/var/data/inkster.db`.
+
+If `scp` is inconvenient, Render's Shell page has `magic-wormhole` pre-installed:
+run `wormhole send /var/data/inkster.db` there and `wormhole receive` locally.
+Do **not** commit the database or customer photos to a public GitHub repository.
+
 ### 4. Stripe webhook (only for card payments)
 
 In the Stripe dashboard → **Developers** → **Webhooks** → **Add endpoint**:
