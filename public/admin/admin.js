@@ -34,6 +34,46 @@
     return b;
   }
 
+  /* ---------- uploads: shrink big photos in the browser, show progress ---------- */
+  // Phone photos are often 4 to 12 MB. They are resized here (longest side 2400 px) before sending,
+  // so they fit the 5 MB limit and upload in seconds. GIFs (may be animated) and small files are sent as they are.
+  var MAX_SIDE = 2400, MAX_BYTES = 5 * 1024 * 1024;
+  function shrink(file) {
+    if (!file || !/^image\/(jpeg|png|webp)$/.test(file.type) || (file.size < 1024 * 1024)) return Promise.resolve(file);
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onerror = function () { URL.revokeObjectURL(url); resolve(file) };
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var k = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+        var c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        // PNG/WebP may be transparent (the home page photo): keep transparency with WebP. Photos become JPEG.
+        var type = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/webp';
+        c.toBlob(function (b) {
+          if (!b || b.size >= file.size || (type === 'image/webp' && b.type !== 'image/webp')) return resolve(file);
+          resolve(new File([b], file.name.replace(/\.\w+$/, '') + (type === 'image/jpeg' ? '.jpg' : '.webp'), { type: b.type }));
+        }, type, 0.86);
+      };
+      img.src = url;
+    });
+  }
+  function tooBig(file) { return file && file.size > MAX_BYTES ? 'This image is still larger than 5 MB after resizing. Choose a smaller one.' : '' }
+  // Like api() but with an upload progress callback (fetch cannot report upload progress).
+  function send(method, url, body, onProgress) {
+    return new Promise(function (resolve, reject) {
+      var x = new XMLHttpRequest(); x.open(method, url);
+      if (onProgress) x.upload.onprogress = function (e) { if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100)) };
+      x.onload = function () {
+        var j = null; try { j = JSON.parse(x.responseText) } catch (e) {}
+        if (x.status >= 200 && x.status < 300) return resolve(j);
+        var err = new Error((j && (j.error && (j.error.message || j.error))) || 'Upload failed (' + x.status + ')'); err.status = x.status; err.fields = (j && j.fields) || {}; reject(err);
+      };
+      x.onerror = function () { var e = new Error('Upload interrupted. Check the connection and try again.'); e.fields = {}; reject(e) };
+      x.send(body);
+    });
+  }
+
   /* ---------- sign in ---------- */
   function showLogin(note) {
     app.textContent = '';
@@ -233,7 +273,7 @@
       var file, remove;
       if (cfg.image) {
         file = h('input', { type: 'file', name: 'image', accept: 'image/jpeg,image/png,image/webp,image/gif' });
-        form.appendChild(h('label', { class: 'f' }, [cfg.image.label + ' (JPG, PNG, WebP or GIF, up to 5 MB)', file]));
+        form.appendChild(h('label', { class: 'f' }, [cfg.image.label + ' (JPG, PNG, WebP or GIF; big phone photos are resized automatically)', file]));
         wraps.image = file.parentNode;
         if (row && row[cfg.image.key]) {
           remove = h('input', { type: 'checkbox' });
@@ -249,9 +289,16 @@
         Object.keys(wraps).forEach(function (k) { wraps[k].classList.remove('bad'); var old = wraps[k].querySelector('em'); if (old) old.remove() });
         var fd = new FormData();
         cfg.fields.forEach(function (f) { var i = inputs[f[0]]; fd.set(f[0], f[2] === 'check' ? (i.checked ? '1' : '0') : i.value) });
-        if (file && file.files[0]) fd.set('image', file.files[0]);
         if (remove && remove.checked) fd.set('remove_image', '1');
-        api('/api/admin/' + name + (row ? '/' + row.id : ''), { method: row ? 'PUT' : 'POST', body: fd }).then(function () { formBox.textContent = ''; load() }).catch(function (er) {
+        var save = form.querySelector('button[type=submit]'); save.disabled = true;
+        var picked = file && file.files[0];
+        if (picked) msg.textContent = 'Preparing the photo…';
+        shrink(picked).then(function (img) {
+          var big = tooBig(img); if (big) { var e = new Error(big); e.fields = { image: big }; throw e }
+          if (img) fd.set('image', img);
+          return send(row ? 'PUT' : 'POST', '/api/admin/' + name + (row ? '/' + row.id : ''), fd, img ? function (p) { msg.textContent = p < 100 ? 'Uploading… ' + p + '%' : 'Saving…' } : null);
+        }).then(function () { formBox.textContent = ''; load() }).catch(function (er) {
+          save.disabled = false;
           if (er.status === 401) return handle(er);
           msg.className = 'msg err'; msg.textContent = er.message;
           Object.keys(er.fields || {}).forEach(function (k) { var w = wraps[k]; if (w) { w.classList.add('bad'); w.appendChild(h('em', { text: er.fields[k] })) } });
@@ -374,8 +421,12 @@
         var f = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif' }), m = h('p', { class: 'msg', role: 'alert' });
         heroBox.appendChild(h('form', { class: 'edit', onsubmit: function (e) {
           e.preventDefault(); if (!f.files[0]) { m.className = 'msg err'; m.textContent = 'Choose an image first.'; return }
-          var fd = new FormData(); fd.set('image', f.files[0]);
-          api('/api/admin/studio/hero', { method: 'POST', body: fd }).then(function (r) { drawHero(r.hero_image) }).catch(function (er) { m.className = 'msg err'; m.textContent = er.message });
+          m.className = 'msg'; m.textContent = 'Preparing the photo…';
+          shrink(f.files[0]).then(function (img) {
+            var big = tooBig(img); if (big) throw new Error(big);
+            var fd = new FormData(); fd.set('image', img);
+            return send('POST', '/api/admin/studio/hero', fd, function (p) { m.textContent = p < 100 ? 'Uploading… ' + p + '%' : 'Saving…' });
+          }).then(function (r) { drawHero(r.hero_image) }).catch(function (er) { if (er.status === 401) return handle(er); m.className = 'msg err'; m.textContent = er.message });
         } }, [
           h('h2', { class: 'sec', text: 'Home page photo', style: 'margin:0' }),
           h('p', { class: 'small', text: 'Shown large on the home page, next to the INK NATION lettering. A transparent PNG of a person or tattoo (background removed) stands in front of the lettering, as in the design. A JPG is placed behind the lettering.' }),
@@ -391,18 +442,47 @@
         var f = h('input', { type: 'file', accept: 'video/mp4,video/webm' }), m = h('p', { class: 'msg', role: 'alert' }), go = h('button', { class: 'btn primary', type: 'submit', text: 'Upload video' });
         vidBox.appendChild(h('form', { class: 'edit', onsubmit: function (e) {
           e.preventDefault(); if (!f.files[0]) { m.className = 'msg err'; m.textContent = 'Choose a video first.'; return }
-          var fd = new FormData(); fd.set('video', f.files[0]); go.disabled = true; m.className = 'msg'; m.textContent = 'Uploading…';
-          api('/api/admin/studio/video', { method: 'POST', body: fd }).then(function (r) { drawVideo(r.team_video) }).catch(function (er) { go.disabled = false; m.className = 'msg err'; m.textContent = er.message });
+          var v = f.files[0], limit = direct ? 100 : 30;
+          if (v.size > limit * 1024 * 1024) { m.className = 'msg err'; m.textContent = 'This video is larger than ' + limit + ' MB. Shorten or compress it first (a 10 to 20 second loop is plenty).'; return }
+          go.disabled = true; m.className = 'msg'; m.textContent = 'Uploading… 0%';
+          var progress = function (p) { m.textContent = p < 100 ? 'Uploading… ' + p + '%' : 'Processing the video…' };
+          var done = direct
+            // Straight from this browser to Cloudinary: faster, and the website server never has to hold the file.
+            ? api('/api/admin/studio/video/sign', { method: 'POST' }).then(function (sig) {
+                var fd = new FormData(); Object.keys(sig.fields).forEach(function (k) { fd.set(k, sig.fields[k]) }); fd.set('file', v);
+                return send('POST', sig.url, fd, progress);
+              }).then(function (r) { return api('/api/admin/studio/video/direct', { method: 'POST', headers: JSONH, body: JSON.stringify(r) }) })
+            : (function () { var fd = new FormData(); fd.set('video', v); return send('POST', '/api/admin/studio/video', fd, progress) })();
+          done.then(function (r) { drawVideo(r.team_video) }).catch(function (er) { if (er.status === 401) return handle(er); go.disabled = false; m.className = 'msg err'; m.textContent = er.message });
         } }, [
           h('h2', { class: 'sec', text: 'Studio video', style: 'margin:0' }),
-          h('p', { class: 'small', text: 'A silent, looping clip that plays full width after the team section. Use a short MP4 or WebM (10 to 20 seconds, up to 30 MB). Without your own video, a sample clip is shown.' }),
+          h('p', { class: 'small', text: 'A silent, looping clip that plays full width after the team section. Use a short MP4 or WebM (10 to 20 seconds, up to ' + (direct ? 100 : 30) + ' MB). Without your own video, a sample clip is shown.' }),
           url ? h('video', { src: url, class: 'preview', controls: '', muted: '', playsinline: '', style: 'max-width:320px' }) : h('p', { class: 'muted', text: 'No video uploaded yet: the sample clip is shown.' }),
           h('label', { class: 'f' }, ['Choose a video (MP4 or WebM)', f]),
           h('div', { class: 'actions' }, [go, url ? twoStep('Remove video', function () { api('/api/admin/studio/video', { method: 'DELETE' }).then(function () { drawVideo('') }).catch(handle) }) : null]), m
         ]));
       }
-      drawVideo(s.team_video);
-      main.appendChild(form); main.appendChild(heroBox); main.appendChild(vidBox);
+      var direct = false;
+      var moveBox = h('div');
+      api('/api/admin/media').then(function (r) { direct = !!(r && r.direct_video); drawMove(r && r.to_move) }).catch(function () {}).then(function () { drawVideo(s.team_video) });
+      // Photos uploaded before Cloudinary was set up are still served from the database (slow). One click moves them.
+      function drawMove(n) {
+        moveBox.textContent = '';
+        if (!n) return;
+        var m = h('p', { class: 'msg', role: 'alert' }), b = h('button', { class: 'btn primary', type: 'button', text: 'Move them now', onclick: function () {
+          b.disabled = true; m.className = 'msg'; m.textContent = 'Moving ' + n + ' file' + (n === 1 ? '' : 's') + '… this can take a minute, keep this page open.';
+          api('/api/admin/media/move', { method: 'POST' }).then(function (r) {
+            var left = r.missing.length + r.failed.length;
+            m.className = left ? 'msg err' : 'msg ok';
+            m.textContent = r.moved + ' moved.' + (r.missing.length ? ' ' + r.missing.length + ' file(s) were already missing: upload them again.' : '') + (r.failed.length ? ' ' + r.failed.length + ' failed: click again to retry.' : '');
+            b.disabled = false; if (!r.failed.length) b.remove();
+          }).catch(function (er) { if (er.status === 401) return handle(er); b.disabled = false; m.className = 'msg err'; m.textContent = er.message });
+        } });
+        moveBox.appendChild(h('div', { class: 'edit' }, [h('h2', { class: 'sec', text: 'Speed up older photos', style: 'margin:0' }),
+          h('p', { class: 'small', text: n + ' photo' + (n === 1 ? ' or video was' : 's or videos were') + ' uploaded before fast storage (Cloudinary) was switched on. Move them so they load quickly too.' }),
+          h('div', { class: 'actions' }, [b]), m]));
+      }
+      main.appendChild(moveBox); main.appendChild(form); main.appendChild(heroBox); main.appendChild(vidBox);
     });
   }
 

@@ -5,7 +5,21 @@ const { HttpError } = require('./errors');
 const env = k => (process.env[k] || '').trim();
 const stripeBase = () => env('STRIPE_API_BASE') || 'https://api.stripe.com';
 const stripeConfigured = () => /^sk_(test|live)_/.test(env('STRIPE_SECRET_KEY')) || (env('STRIPE_API_BASE') && !!env('STRIPE_SECRET_KEY'));
-const appUrl = () => (env('APP_URL') || env('RENDER_EXTERNAL_URL') || `http://localhost:${process.env.PORT || 3000}`).replace(/\/+$/, '');
+// The public address of the site, used for Stripe's return page and for links in emails.
+// A local APP_URL (often copied from .env) is ignored on a host: it sent customers back to "localhost" after paying.
+const isLocal = u => /^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:|\/|$)/i.test(u);
+let warnedLocal = false;
+const appUrl = () => {
+  const set = env('APP_URL'), host = env('RENDER_EXTERNAL_URL');
+  let url = set;
+  if (!url || (isLocal(url) && host)) {
+    if (url && !warnedLocal) { warnedLocal = true; console.warn(`APP_URL is "${url}", a local address. Using ${host} instead. Fix APP_URL under Environment on Render.`); }
+    url = host;
+  }
+  url = url || `http://localhost:${process.env.PORT || 3000}`;
+  if (!/^https?:\/\//i.test(url)) url = (isLocal(url) ? 'http://' : 'https://') + url; // "my-app.onrender.com" without https:// is not a valid Stripe URL
+  return url.replace(/\/+$/, '');
+};
 
 async function stripe(method, path, form) {
   let res;

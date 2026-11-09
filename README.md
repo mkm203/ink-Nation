@@ -56,7 +56,7 @@ Sign in at `/admin/`, then:
 | **Reviews > Edit > Reviewer's photo** | The customer photo shown next to their review. |
 | **Bookings** | Reference images sent by clients open from the "Notes" column. |
 
-Photos are JPG, PNG, WebP or GIF, up to 5 MB (the studio video can be MP4/WebM up to 30 MB). They are stored in `uploads/` (or `UPLOAD_DIR`). Without a photo, the site shows its drawn artwork, so it always looks finished.
+Photos are JPG, PNG, WebP or GIF, up to 5 MB (big phone photos are resized automatically in the admin area before upload). The studio video can be MP4/WebM up to 30 MB, or 100 MB with Cloudinary. With `CLOUDINARY_URL` set (recommended online, see DEPLOY.md step 3b) they are stored on Cloudinary's CDN; otherwise in `uploads/` (or `UPLOAD_DIR`). Without a photo, the site shows its drawn artwork, so it always looks finished.
 You can also add, rename, reorder or hide artists, gallery photos, work slides, tiers, reviews and FAQ entries there.
 
 ## 3. What the booking form checks

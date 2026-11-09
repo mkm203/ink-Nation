@@ -114,7 +114,13 @@
       else n.textContent = v;
     });
     if (s.studio_name) document.title = s.studio_name;
-    if (s.team_video) { vid.removeAttribute('poster'); vid.src = s.team_video }
+    if (s.team_video) {
+      // A video on Cloudinary gets its first frame as a light poster, so something shows at once while the clip loads.
+      var cdn = /^https:\/\/res\.cloudinary\.com\/.+\/video\/upload\/[^/]+\/(.+)\.mp4$/.test(s.team_video);
+      if (cdn) vid.setAttribute('poster', s.team_video.replace(/\/video\/upload\/[^/]+\//, '/video/upload/so_0,f_auto,q_auto,c_limit,w_1280/').replace(/\.mp4$/, '.jpg'));
+      else vid.removeAttribute('poster');
+      vid.src = s.team_video;
+    }
     if (s.hero_image) {
       // A PNG or WebP may have a transparent background, so it stands in front of the lettering like the design. A JPG is a solid rectangle, so it goes behind.
       $('.hero').insertBefore(h('img', { class: 'hero-photo' + (/\.(png|webp)$/i.test(s.hero_image) ? '' : ' behind'), src: s.hero_image, alt: '', decoding: 'async' }), $('#heroArt'));
@@ -171,11 +177,13 @@
     list.forEach(function (a) { artistsById[a.id] = a; sel.appendChild(h('option', { value: a.id, text: a.name })) });
     artistList = list;
   }
+  // Photos on Cloudinary are stored with a 2000 px limit; small places ask for a smaller copy (much less to download).
+  function sized(url, w) { return /^https:\/\/res\.cloudinary\.com\//.test(url || '') ? url.replace('/c_limit,w_2000/', '/c_limit,w_' + w + '/') : url }
   // The drawn art or the uploaded photo of a piece of work.
-  function workMedia(w) {
+  function workMedia(w, width) {
     function drawn() { var art = svg({ viewBox: '0 0 1200 800', preserveAspectRatio: 'xMaxYMid slice', 'aria-hidden': 'true' }); (ART[w.art_key] || Art.irezumi)(art); return art }
     if (!w.image) return drawn();
-    var img = h('img', { src: w.image, alt: w.title + (w.artist_name ? ', by ' + w.artist_name : ''), loading: 'lazy', decoding: 'async' });
+    var img = h('img', { src: sized(w.image, width || 2000), alt: w.title + (w.artist_name ? ', by ' + w.artist_name : ''), loading: 'lazy', decoding: 'async' });
     // If a photo file is missing, show the drawn art instead of a broken picture.
     img.addEventListener('error', function () { if (img.parentNode) img.parentNode.replaceChild(drawn(), img) });
     return img;
@@ -188,10 +196,10 @@
       });
       var pic = h('div', { class: 'tm-pic' });
       function drawnPortrait() { var s = svg({ viewBox: '0 0 300 400', preserveAspectRatio: 'xMidYMid slice', 'aria-hidden': 'true' }); Art.portrait(s, a.art_key, a.name.charAt(0).toUpperCase()); return s }
-      if (a.photo) { var pi = h('img', { src: a.photo, alt: 'Portrait of ' + a.name, loading: 'lazy', decoding: 'async' }); pi.addEventListener('error', function () { if (pi.parentNode) pi.parentNode.replaceChild(drawnPortrait(), pi) }); pic.appendChild(pi) }
+      if (a.photo) { var pi = h('img', { src: sized(a.photo, 900), alt: 'Portrait of ' + a.name, loading: 'lazy', decoding: 'async' }); pi.addEventListener('error', function () { if (pi.parentNode) pi.parentNode.replaceChild(drawnPortrait(), pi) }); pic.appendChild(pi) }
       else pic.appendChild(drawnPortrait());
       var thumbs = h('div', { class: 'tm-thumbs' }, mine.map(function (w, i) {
-        var box = h('button', { class: 'tm-thumb ' + (CLS[w.art_key] || 's1'), type: 'button', 'aria-label': 'View ' + w.title, onclick: function () { openWork(mine, i) } }, [workMedia(w), h('span', { text: w.title })]);
+        var box = h('button', { class: 'tm-thumb ' + (CLS[w.art_key] || 's1'), type: 'button', 'aria-label': 'View ' + w.title, onclick: function () { openWork(mine, i) } }, [workMedia(w, 600), h('span', { text: w.title })]);
         return box;
       }));
       var panel = h('article', { class: 'tm-panel', id: 'artist-' + a.slug, 'aria-label': a.name }, [
@@ -305,7 +313,7 @@
     list.forEach(function (r) {
       var n = Math.max(1, Math.min(5, Number(r.rating) || 5));
       var avatar = r.image
-        ? h('img', { class: 'review-pic', src: r.image, alt: 'Photo of ' + r.name, loading: 'lazy', decoding: 'async' })
+        ? h('img', { class: 'review-pic', src: sized(r.image, 200), alt: 'Photo of ' + r.name, loading: 'lazy', decoding: 'async' })
         : h('span', { class: 'review-pic review-initial', 'aria-hidden': 'true', text: (r.name || '?').charAt(0).toUpperCase() });
       ul.appendChild(h('li', { class: 'review' }, [
         h('p', { class: 'stars', 'aria-label': n + ' out of 5 stars', text: '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n) }),

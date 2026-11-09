@@ -11,6 +11,8 @@ const { isDuplicate, isForeignKey } = require('../lib/dbErrors');
 const { parse, parseOrThrow, intParam } = require('../lib/fields');
 const { upload, saveImage, removeImage } = require('../lib/images');
 const { uploadVideo, saveVideo } = require('../lib/video');
+const cloud = require('../lib/cloudinary');
+const moveMedia = require('../lib/moveMedia');
 
 const router = express.Router();
 
@@ -90,6 +92,23 @@ router.post('/studio/video', uploadVideo, async (req, res) => {
   const url = await saveVideo(req.file);
   await content.saveSettings({ team_video: url });
   await removeImage(old);
+  res.json({ team_video: url });
+});
+// Direct upload of the video from the browser to Cloudinary (only when CLOUDINARY_URL is set):
+// 1. the page asks for a signature, 2. sends the file to Cloudinary itself, 3. reports the result here.
+router.get('/media', async (req, res) => res.json({ direct_video: cloud.enabled(), to_move: cloud.enabled() ? (await moveMedia.pending()).length : 0 }));
+// Moves photos saved before Cloudinary was set up. Can take a minute with many photos.
+router.post('/media/move', async (req, res) => {
+  if (!cloud.enabled()) throw new HttpError(409, 'Set CLOUDINARY_URL on the server first.');
+  res.json(await moveMedia.moveAll());
+});
+router.post('/studio/video/sign', (req, res) => res.json(cloud.signedUpload('video')));
+router.post('/studio/video/direct', async (req, res) => {
+  const url = cloud.urlFromUploadResult('video', req.body);
+  if (!url) throw new HttpError(400, 'The video upload could not be confirmed. Please try again.', { video: 'Upload again.' });
+  const old = (await content.settings()).team_video;
+  await content.saveSettings({ team_video: url });
+  if (old !== url) await removeImage(old);
   res.json({ team_video: url });
 });
 router.delete('/studio/video', async (req, res) => {

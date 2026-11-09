@@ -2,7 +2,8 @@
 const crypto = require('crypto');
 const multer = require('multer');
 const { HttpError } = require('./errors');
-const { putFile } = require('./images');
+const { putFile, TYPES } = require('./images');
+const cloud = require('./cloudinary');
 
 const MAX_MB = 30;
 const uploader = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_MB * 1024 * 1024, files: 1, fields: 5 } }).single('video');
@@ -27,6 +28,7 @@ async function saveVideo(file) {
   if (!file) return null;
   const ext = sniff(file.buffer);
   if (!ext) throw new HttpError(400, 'Only MP4 or WebM videos are accepted.', { video: 'Choose an MP4 or WebM video.' });
+  if (cloud.enabled()) return cloud.uploadBuffer(file.buffer, 'video', TYPES[ext]);
   const name = crypto.randomBytes(12).toString('hex') + '.' + ext;
   await putFile(name, file.buffer);
   return '/uploads/' + name;

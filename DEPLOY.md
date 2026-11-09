@@ -20,7 +20,7 @@ the data somewhere else, so the website can restart as often as it likes.
 
 ## A. Render free + Turso (free)
 
-Do the steps in order. Steps 1 to 3 are required, 4 and 5 are optional.
+Do the steps in order. Steps 1 to 3 are required, 3b is strongly recommended (photos and video load fast), 4 and 5 are optional.
 
 ### 1. Create the free Turso database
 
@@ -97,6 +97,24 @@ Open `https://YOUR-APP.onrender.com`. The first visit after a quiet period takes
 server is waking up). Your artists, prices, bookings and photos should all be there. Restart the service from
 the Render dashboard and check again: the content stays.
 
+### 3b. Fast photos and video (Cloudinary, free)
+
+Without this step photos and the video are stored inside Turso, in small pieces. Every view then makes the Render server
+fetch them piece by piece from Turso, and the free server forgets its copy each time it sleeps: photos are slow and the
+video often never starts. Cloudinary stores them on a worldwide CDN, shrinks photos to the right size and format for each
+browser, and compresses the video (a 30 MB clip usually becomes 2 to 5 MB).
+
+1. Sign up at <https://cloudinary.com> (free plan, no credit card).
+2. On the dashboard, copy the **API environment variable**. It looks like
+   `cloudinary://123456789012345:AbCdEf...@your-cloud-name`. Keep it private.
+3. Render → your service → **Environment** → add `CLOUDINARY_URL` with that value (without the `CLOUDINARY_URL=` part). Save; Render redeploys.
+4. The log must say `Uploads: Cloudinary (CDN)`.
+5. Sign in at `/admin/` → **Studio**. A box **Speed up older photos** lists the photos and video uploaded before; click
+   **Move them now** once. Everything uploaded from now on goes straight to Cloudinary.
+
+The video is then sent straight from your browser to Cloudinary, with a progress bar, up to 100 MB.
+Big phone photos are resized in the browser before upload (in every mode), so they no longer fail at the 5 MB limit.
+
 ### 4. Emails on the free plan (Brevo)
 
 Render's free plan **blocks the ports used by SMTP (25, 465 and 587)**, so Gmail SMTP cannot send from
@@ -126,13 +144,18 @@ In the Stripe dashboard → **Developers** → **Webhooks** → **Add endpoint**
 
 Copy the signing secret (`whsec_…`) into `STRIPE_WEBHOOK_SECRET` on Render.
 
+After paying, Stripe sends the customer back to `APP_URL`. Set it to your real address (`https://YOUR-APP.onrender.com`),
+never `http://localhost:3000` copied from `.env`. If a local address is found on Render, the app now uses Render's own address
+instead and logs a warning. The log line `Public address (Stripe return page, email links): …` shows which one is used.
+
 ### Good to know about the free plans
 
 - **Slow first visit.** Render's free server sleeps after 15 minutes without visitors and takes about a
   minute to wake. Your data is not affected. A free uptime monitor that opens `/api/health` every few
   minutes keeps it awake (Render gives 750 free hours a month, enough for one service running all month).
 - **Turso free limits:** 5 GB of storage, 500 million row reads and 10 million row writes a month.
-  Pictures are stored in the database, so a 5 MB photo uses about 5 MB. A studio site stays far below the limits.
+  Without Cloudinary, pictures are stored in the database, so a 5 MB photo uses about 5 MB.
+- **Cloudinary free limits:** 25 credits a month (1 credit = 1 GB stored, 1 GB delivered or 1,000 resizes). A studio site stays far below.
 - **Backups.** Turso keeps your data safe, but it is good practice to keep a copy. Your local
   `data/inkster.db` is only a snapshot from the day you copied it.
 - **Updates.** Push new code to GitHub as before; Render redeploys and the data stays on Turso.
@@ -156,14 +179,15 @@ Render docs. Also, on a paid instance, SMTP works, so `SMTP_*` can replace Brevo
 | `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` | Your free Turso database (option A). When set, the SQLite file is not used. |
 | `ADMIN_PASSWORD` | Password for `/admin/`. **Required**: empty disables the admin area. |
 | `JWT_SECRET` | Signs the admin cookie. Keep it stable (admin is signed out on restart if missing). |
-| `APP_URL` | Public URL, e.g. `https://ink-nation.onrender.com`. No trailing slash. Render's own address is used if empty. |
+| `APP_URL` | Public URL, e.g. `https://ink-nation.onrender.com`. Render's own address is used if empty or if it is set to localhost. |
+| `CLOUDINARY_URL` | `cloudinary://KEY:SECRET@CLOUD` from the Cloudinary dashboard. Photos and video are stored there (fast). Step 3b. |
 | `ADMIN_EMAIL` | Where the studio's copies of booking and payment emails go. Falls back to the studio email in the admin area. |
 | `BREVO_API_KEY` + `MAIL_FROM` | Email over the web (works on Render free). |
 | `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` `MAIL_FROM` | Email over SMTP (your computer, or paid hosting). |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Card payments. Leave empty to hide cards. |
 | `SLOTS_PER_ARTIST_PER_DAY` | Sessions per artist per day. Default `2`. |
 | `DB_FILE` / `UPLOAD_DIR` | Only for the paid-disk option or your own computer. |
-| `UPLOAD_STORAGE` | `db` or `disk`. Automatic: `db` when Turso is used, `disk` otherwise. |
+| `UPLOAD_STORAGE` | `db` or `disk`, only used without `CLOUDINARY_URL`. Automatic: `db` when Turso is used, `disk` otherwise. |
 | `NODE_ENV=production` | Makes the admin cookie HTTPS-only. Do not set it on `http://localhost`. |
 
 ---
@@ -222,4 +246,7 @@ Reset everything by deleting `data/inkster.db` and restarting.
 | Card payment says unavailable | `STRIPE_SECRET_KEY` is empty or wrong, or `APP_URL` is wrong. |
 | Stripe payment stays unpaid | Webhook URL/secret wrong. |
 | `Cannot find module 'node:sqlite'` | Node is older than 22.5. Render: `.node-version` should say `22.20.0`. |
+| Photos slow, video does not play | `CLOUDINARY_URL` is not set (step 3b), or older photos were not moved (Admin → Studio → Move them now). |
+| After paying, the browser goes to `localhost` | `APP_URL` is set to a local address. Change it to `https://YOUR-APP.onrender.com`. |
+| Upload says "could not be stored right now" | `CLOUDINARY_URL` is wrong (check the log for `Cloudinary upload refused`). |
 | First page load takes a minute | The free Render server was asleep. Normal on the free plan. |

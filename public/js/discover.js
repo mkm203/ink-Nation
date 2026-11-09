@@ -17,7 +17,7 @@
     tiers.forEach(function (t, i) {
       ol.appendChild(h('li', { class: 'tier' + (t.image ? ' has-pic' : '') }, [
         h('span', { class: 'n', text: String(i + 1).padStart(2, '0') }),
-        t.image ? h('div', { class: 'tier-pic' }, [h('img', { src: t.image, alt: t.name, loading: 'lazy', decoding: 'async' })]) : null,
+        t.image ? h('div', { class: 'tier-pic' }, [h('img', { src: /^https:\/\/res\.cloudinary\.com\//.test(t.image) ? t.image.replace('/c_limit,w_2000/', '/c_limit,w_900/') : t.image, alt: t.name, loading: 'lazy', decoding: 'async' })]) : null,
         h('div', { class: 'tn' }, [h('h3', { text: t.name }), t.description ? h('p', { text: t.description }) : null]),
         h('div', { class: 'tp' }, [h('b', { text: I.priceRange(t) }), h('small', { text: 'Deposit ' + usd(t.deposit_cents) })]),
         h('a', { class: 'btn btn-line', href: '/?tier=' + t.id + '#book', text: 'Book this size' })

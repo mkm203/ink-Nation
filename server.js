@@ -66,7 +66,8 @@ if (require.main === module) {
   ready()
     .then(() => {
       console.log(`Database: ${db.DB_FILE}`);
-      console.log(`Uploads: ${inDatabase() ? 'kept in the database' : UPLOAD_DIR}`);
+      console.log(`Uploads: ${require('./src/lib/cloudinary').enabled() ? 'Cloudinary (CDN)' : inDatabase() ? 'kept in the database (slow: set CLOUDINARY_URL, see DEPLOY.md)' : UPLOAD_DIR}`);
+      console.log(`Public address (Stripe return page, email links): ${require('./src/lib/payments').appUrl()}`);
       // Render's free plan erases its files on every deploy and after idle time: data must live on Turso.
       if ((process.env.RENDER || process.env.RENDER_SERVICE_ID) && !db.REMOTE && !String(db.DB_FILE).startsWith('/var/data')) {
         console.warn('WARNING: this data will be lost on the next deploy or restart. Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN');

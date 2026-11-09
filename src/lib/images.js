@@ -10,6 +10,7 @@ const multer = require('multer');
 require('dotenv').config({ quiet: true });
 const { HttpError } = require('./errors');
 const db = require('../../config/db');
+const cloud = require('./cloudinary');
 
 // A host such as Render gives you a persistent disk and points UPLOAD_DIR at it.
 const UPLOAD_DIR = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : path.join(__dirname, '..', '..', 'uploads');
@@ -86,10 +87,12 @@ async function serveStored(req, res, next) {
 }
 
 // Saves an uploaded file and returns its public URL, or null when no file was sent.
+// With CLOUDINARY_URL set the file goes to Cloudinary (fast CDN, resized automatically), otherwise to disk or the database.
 async function saveImage(file) {
   if (!file) return null;
   const ext = sniff(file.buffer);
   if (!ext) throw new HttpError(400, 'Only JPG, PNG, GIF or WebP images are accepted.', { image: 'Choose a JPG, PNG, GIF or WebP image.' });
+  if (cloud.enabled()) return cloud.uploadBuffer(file.buffer, 'image', TYPES[ext]);
   const name = crypto.randomBytes(12).toString('hex') + '.' + ext;
   await putFile(name, file.buffer);
   return '/uploads/' + name;
@@ -97,6 +100,7 @@ async function saveImage(file) {
 
 // Deletes the file wherever it is (disk and database), so nothing is left behind.
 function removeImage(url) {
+  if (cloud.isOurs(url)) return cloud.destroy(url);
   if (!url || typeof url !== 'string' || !url.startsWith('/uploads/')) return Promise.resolve();
   const name = path.basename(url);
   forget(name);
@@ -106,4 +110,4 @@ function removeImage(url) {
   ]).then(() => undefined);
 }
 
-module.exports = { upload, saveImage, removeImage, putFile, serveStored, inDatabase, UPLOAD_DIR };
+module.exports = { upload, saveImage, removeImage, putFile, loadFile, serveStored, inDatabase, UPLOAD_DIR, TYPES };

@@ -732,6 +732,93 @@ async function t(name, fn) {
     assert.match(logged, /Brevo answered 401/);
   });
 
+  console.log('\nPhotos and video on Cloudinary (fast CDN)');
+  {
+    const cl = { uploads: [], destroyed: [], n: 0 };
+    const clServer = http.createServer((req, res) => {
+      const parts = []; req.on('data', c => parts.push(c)); req.on('end', async () => {
+        const body = Buffer.concat(parts);
+        const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+        const m = /^\/v1_1\/demo\/(image|video)\/(upload|destroy)$/.exec(req.url);
+        if (!m) return send(404, { error: { message: 'nope' } });
+        const fd = m[2] === 'upload' ? await new Request('http://x', { method: 'POST', headers: { 'content-type': req.headers['content-type'] }, body }).formData() : new URLSearchParams(body.toString());
+        const params = {}; for (const [k, v] of fd.entries()) if (!['file', 'api_key', 'signature'].includes(k)) params[k] = v;
+        const good = fd.get('api_key') === 'key123' && fd.get('signature') === cloudSign(params, 'secret456');
+        if (!good) return send(401, { error: { message: 'Invalid Signature' } });
+        if (m[2] === 'destroy') { cl.destroyed.push(m[1] + ':' + fd.get('public_id')); return send(200, { result: 'ok' }); }
+        const file = fd.get('file'); const id = 'f' + (++cl.n);
+        cl.uploads.push({ kind: m[1], folder: fd.get('folder'), size: file.size });
+        send(200, { public_id: 'ink-nation/' + id, version: 1700000000 + cl.n, format: m[1] === 'video' ? 'mp4' : 'png', resource_type: m[1] });
+      });
+    });
+    const cloudSign = require('../src/lib/cloudinary').sign;
+    await new Promise(r => clServer.listen(0, '127.0.0.1', r));
+    const CDN = 'https://res.cloudinary.com/demo/';
+    await withEnv({ CLOUDINARY_URL: 'cloudinary://key123:secret456@demo', CLOUDINARY_API_BASE: 'http://127.0.0.1:' + clServer.address().port }, async () => {
+      let heroUrl, workId;
+      await t('a photo goes to Cloudinary with a valid signature, nothing is written to disk or the database', async () => {
+        const before = fs.readdirSync(uploads).length; const [[{ n: rows }]] = await db.query('SELECT COUNT(*) n FROM ink_files');
+        const r = await call('POST', '/api/admin/studio/hero', form({}, { field: 'image', buffer: PNG })); assert.equal(r.status, 200, JSON.stringify(r.json));
+        heroUrl = r.json.hero_image; assert.match(heroUrl, /^https:\/\/res\.cloudinary\.com\/demo\/image\/upload\/f_auto,q_auto,c_limit,w_2000\/v\d+\/ink-nation\/f\d+\.png$/);
+        assert.equal(cl.uploads.at(-1).folder, 'ink-nation'); assert.equal(cl.uploads.at(-1).size, PNG.length);
+        assert.equal(fs.readdirSync(uploads).length, before); const [[{ n: after }]] = await db.query('SELECT COUNT(*) n FROM ink_files'); assert.equal(after, rows);
+        assert.equal((await call('GET', '/api/studio')).json.hero_image, heroUrl);
+      });
+      await t('replacing and deleting photos removes the old file from Cloudinary', async () => {
+        const r = await call('POST', '/api/admin/studio/hero', form({}, { field: 'image', buffer: PNG })); assert.equal(r.status, 200);
+        assert.ok(cl.destroyed.includes('image:' + heroUrl.split('/').slice(-2).join('/').replace(/\.png$/, '')), 'old hero destroyed');
+        const w = await call('POST', '/api/admin/works', form({ title: 'Cloud piece', description: 'D', art_key: 'rose' }, { field: 'image', buffer: PNG })); assert.equal(w.status, 201); workId = w.json.id;
+        assert.ok(w.json.image.startsWith(CDN));
+        assert.equal((await call('DELETE', '/api/admin/works/' + workId)).status, 204);
+        assert.ok(cl.destroyed.some(d => w.json.image.includes(d.slice(6))));
+        await call('DELETE', '/api/admin/studio/hero');
+      });
+      await t('a fake image is still refused before anything is sent to Cloudinary', async () => {
+        const n = cl.uploads.length; const r = await call('POST', '/api/admin/studio/hero', form({}, { field: 'image', buffer: Buffer.alloc(100, 7) }));
+        assert.equal(r.status, 400); assert.equal(cl.uploads.length, n);
+      });
+      await t('the video is delivered as compressed MP4 (server upload and direct browser upload)', async () => {
+        const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from('ftypisom'), Buffer.alloc(500, 3)]);
+        const f = new FormData(); f.append('video', new Blob([MP4], { type: 'video/mp4' }), 'v.mp4');
+        const up = await call('POST', '/api/admin/studio/video', f); assert.equal(up.status, 200);
+        assert.match(up.json.team_video, /^https:\/\/res\.cloudinary\.com\/demo\/video\/upload\/q_auto,c_limit,w_1280\/v\d+\/ink-nation\/f\d+\.mp4$/);
+        assert.equal((await call('GET', '/api/admin/media')).json.direct_video, true);
+        const sig = await call('POST', '/api/admin/studio/video/sign'); assert.equal(sig.status, 200);
+        const bf = new FormData(); for (const [k, v] of Object.entries(sig.json.fields)) bf.append(k, v); bf.append('file', new Blob([MP4]), 'v.mp4');
+        const cr = await (await fetch(sig.json.url, { method: 'POST', body: bf })).json(); assert.equal(cr.resource_type, 'video', 'signature accepted by Cloudinary');
+        const d = await call('POST', '/api/admin/studio/video/direct', cr); assert.equal(d.status, 200); assert.ok(d.json.team_video.endsWith(cr.public_id + '.mp4'));
+        assert.ok(cl.destroyed.includes('video:' + up.json.team_video.split('/').slice(-2).join('/').replace(/\.mp4$/, '')), 'previous video destroyed');
+        for (const bad of [{ ...cr, public_id: 'other/x' }, { ...cr, resource_type: 'image' }, { ...cr, public_id: 'ink-nation/../x' }, {}]) assert.equal((await call('POST', '/api/admin/studio/video/direct', bad)).status, 400);
+        assert.equal((await call('POST', '/api/admin/studio/video/sign', undefined, { auth: false })).status, 401);
+        await call('DELETE', '/api/admin/studio/video');
+      });
+      await t('older photos (database or disk) are moved to Cloudinary in one click and every row is updated', async () => {
+        const disk = crypto.randomBytes(12).toString('hex') + '.png'; fs.writeFileSync(path.join(uploads, disk), PNG);
+        const inDb = crypto.randomBytes(12).toString('hex') + '.png';
+        await withEnv({ UPLOAD_STORAGE: 'db' }, () => require('../src/lib/images').putFile(inDb, PNG));
+        const w = await call('POST', '/api/admin/works', form({ title: 'Old piece', description: 'D', art_key: 'rose' })); assert.equal(w.status, 201);
+        await db.query('UPDATE works SET image = ? WHERE id = ?', ['/uploads/' + disk, w.json.id]);
+        await db.query("INSERT INTO settings (k, v) VALUES ('hero_image', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", ['/uploads/' + inDb]);
+        assert.equal((await call('GET', '/api/admin/media')).json.to_move, 2);
+        const mv = await call('POST', '/api/admin/media/move'); assert.equal(mv.status, 200); assert.equal(mv.json.moved, 2, JSON.stringify(mv.json));
+        const [[row]] = await db.query('SELECT image FROM works WHERE id = ?', [w.json.id]); assert.ok(row.image.startsWith(CDN));
+        assert.ok((await call('GET', '/api/studio')).json.hero_image.startsWith(CDN));
+        const [[{ n }]] = await db.query('SELECT COUNT(*) n FROM ink_files WHERE name = ?', [inDb]); assert.equal(n, 0, 'database copy freed');
+        assert.equal((await call('GET', '/api/admin/media')).json.to_move, 0);
+        await call('DELETE', '/api/admin/works/' + w.json.id); await call('DELETE', '/api/admin/studio/hero'); fs.rmSync(path.join(uploads, disk), { force: true });
+      });
+    });
+    clServer.close();
+  }
+
+  console.log('\nThe address Stripe sends customers back to');
+  await t('a local APP_URL is ignored on Render, so paying never ends on localhost', async () => {
+    await withEnv({ APP_URL: 'http://localhost:3000', RENDER_EXTERNAL_URL: 'https://ink-nation.onrender.com' }, () => assert.equal(pay.appUrl(), 'https://ink-nation.onrender.com'));
+    await withEnv({ APP_URL: 'https://inknation.example/', RENDER_EXTERNAL_URL: 'https://ink-nation.onrender.com' }, () => assert.equal(pay.appUrl(), 'https://inknation.example'));
+    await withEnv({ APP_URL: 'ink-nation.onrender.com', RENDER_EXTERNAL_URL: undefined }, () => assert.equal(pay.appUrl(), 'https://ink-nation.onrender.com'));
+    await withEnv({ APP_URL: undefined, RENDER_EXTERNAL_URL: undefined, PORT: '3000' }, () => assert.equal(pay.appUrl(), 'http://localhost:3000'));
+  });
+
   await t('sign out ends the session', async () => {
     await call('POST', '/api/admin/logout'); cookie = '';
     assert.equal((await call('GET', '/api/admin/stats')).status, 401);

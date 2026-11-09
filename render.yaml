@@ -34,6 +34,9 @@ services:
         sync: false
       - key: APP_URL
         sync: false
+      # Photos and video on Cloudinary's CDN (free). Without it they are kept in Turso and load slowly. DEPLOY.md, step 3b.
+      - key: CLOUDINARY_URL
+        sync: false
       # Email: the free plan blocks SMTP, so use Brevo's web API (DEPLOY.md, step 4).
       - key: BREVO_API_KEY
         sync: false
